@@ -92,6 +92,12 @@ int main(void)
 
 // HELPER SECTION
 
+/** 
+ * @brief  Displays string message on shell
+ * @note   
+ * @param  message: Message to display
+ * @retval None
+ */
 void prompt_message(char* message){
     printf("%s", message);
 }
