@@ -75,6 +75,8 @@ int main(void)
 
         for (int i = 0; i < cnt; i++)
             printf("\nArg[%d] = %s", i, args[i]);
+     
+        // WHENEVER & IS THERE, DON'T WAITPID
 
         // error handling for command input    
         if(cnt == -1)
