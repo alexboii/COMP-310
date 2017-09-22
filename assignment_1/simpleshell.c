@@ -2,6 +2,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdarg.h>
 // QUESTIONS
 
@@ -21,9 +25,11 @@
 // HASH CONSTANTS FOR COMMANDS
 #define CD_HASH 5863276
 #define EXIT_HASH 2090237503
+#define LS_HASH 5863588
 
 // FUNCTION PROTOTYPES
 int execute_non_fork(char *args[]);
+int execute_fork(char *args[]);
 int execute_cd(char *path);
 int exec_pwd();
 unsigned long hash(unsigned char *str);
@@ -50,7 +56,7 @@ int main(void)
     prompt_message(PRESENTATION);
     while (1)
     {
-        // delocalize memory from command line arguments 
+        // delocalize memory from command line arguments
         char *args[20] = {NULL};
         bg = 0;
         int cnt = getcmd("\n>> ", args, &bg);
@@ -76,6 +82,21 @@ int main(void)
             continue;
         }
 
+        // TODO: insert an error if > to one of the commands that are not ls, cat, jobs, etc.
+
+        // "workbench.colorTheme": "Darcula Theme from IntelliJ",
+        // "markdown.preview.lineHeight": 1.6,
+        // "editor.fontFamily": "'DejaVu Sans Mono'",
+        // "editor.formatOnSave": true,
+        // "files.autoSave": "afterDelay",
+        // "C_Cpp.intelliSenseEngine": "Default",
+        // // Press the Enter key to activate a command (Default: false)
+        // "docomment.activateOnEnter": true,
+        // // Insert spaces when pressing Tab.
+        // "editor.insertSpaces": true,
+        // // The number of spaces a tab is equal to.
+        // "editor.tabSize": 4
+
         // we do not need to fork for the following commands, so simply execute them
         int result_non_fork = execute_non_fork(args);
         if (result_non_fork == 0 || result_non_fork == 1)
@@ -97,7 +118,12 @@ int main(void)
         }
         else if (pid == 0)
         {
-            // child process
+            execvp(args[0], args);
+        }
+        else
+        {
+            int status;
+            waitpid(pid, &status, WUNTRACED);
         }
     }
 }
