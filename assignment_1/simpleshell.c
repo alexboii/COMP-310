@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
-
 // QUESTIONS
 
 // 1 - Do we need to implement "pwd?"
@@ -15,6 +14,7 @@
 #define ERROR_NO_ARGS "You haven't entered a command. Please try again."
 #define ERROR_CD_INVALID_DIRECTORY "Invalid directory."
 #define ERROR_CWD_INVALID "Invalid current working directory."
+#define ERROR_FORKING "Forking error."
 #define CURRENT_DIRECTORY "Current directory: '%s'"
 #define EXIT_MESSAGE "Exiting..."
 
@@ -30,6 +30,15 @@ unsigned long hash(unsigned char *str);
 void prompt_message(char *message, ...);
 int getcmd(char *prompt, char *args[], int *background);
 
+// STRUCT DEFINITION FOR JOBS
+typedef struct job
+{
+    struct job *next;
+    char *command;
+    pid_t process;
+    int stopped;
+} job;
+
 /** 
  * @brief  Assignment 1
  * @note   
@@ -37,11 +46,12 @@ int getcmd(char *prompt, char *args[], int *background);
  */
 int main(void)
 {
-    char *args[20];
     int bg;
     prompt_message(PRESENTATION);
     while (1)
     {
+        // delocalize memory from command line arguments 
+        char *args[20] = {NULL};
         bg = 0;
         int cnt = getcmd("\n>> ", args, &bg);
 
@@ -79,6 +89,16 @@ int main(void)
         }
 
         int pid = fork();
+
+        if (pid < 0)
+        {
+            prompt_message(ERROR_FORKING);
+            continue;
+        }
+        else if (pid == 0)
+        {
+            // child process
+        }
     }
 }
 
@@ -122,6 +142,8 @@ int execute_cd(char *path)
     {
         path = getenv("HOME");
     }
+
+    printf("\nDEBUG: %s", path);
 
     if (chdir(path) != 0)
     {
