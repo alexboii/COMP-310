@@ -84,19 +84,6 @@ int main(void)
 
         // TODO: insert an error if > to one of the commands that are not ls, cat, jobs, etc.
 
-        // "workbench.colorTheme": "Darcula Theme from IntelliJ",
-        // "markdown.preview.lineHeight": 1.6,
-        // "editor.fontFamily": "'DejaVu Sans Mono'",
-        // "editor.formatOnSave": true,
-        // "files.autoSave": "afterDelay",
-        // "C_Cpp.intelliSenseEngine": "Default",
-        // // Press the Enter key to activate a command (Default: false)
-        // "docomment.activateOnEnter": true,
-        // // Insert spaces when pressing Tab.
-        // "editor.insertSpaces": true,
-        // // The number of spaces a tab is equal to.
-        // "editor.tabSize": 4
-
         // we do not need to fork for the following commands, so simply execute them
         int result_non_fork = execute_non_fork(args);
         if (result_non_fork == 0 || result_non_fork == 1)
@@ -118,12 +105,16 @@ int main(void)
         }
         else if (pid == 0)
         {
+            // TODO: to test jobs, put an await signal or something like that so that you see the command running despite &
             execvp(args[0], args);
         }
         else
         {
             int status;
-            waitpid(pid, &status, WUNTRACED);
+            if (bg == 0)
+            {
+                waitpid(pid, &status, WUNTRACED);
+            }
         }
     }
 }
@@ -168,8 +159,6 @@ int execute_cd(char *path)
     {
         path = getenv("HOME");
     }
-
-    printf("\nDEBUG: %s", path);
 
     if (chdir(path) != 0)
     {
