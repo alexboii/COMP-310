@@ -1,37 +1,49 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
 #include <ctype.h>
-#include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 // QUESTIONS
-
-// 1 - Do we need to implement "pwd?"
-// 2 - What's considered "other built-in features" for 20% in the grading scheme?
+// 1 - What's considered "other built-in features" for 20% in the grading scheme?
+// 2 - Do we have to handle stopped jobs, i.e. jobs that we can resume again afterwards?
 
 // PROMPT CONSTANTS
-#define PRESENTATION "Alexander Bratyshkin --- 260684228 --- Assignment 1 --- ECSE 427"
-#define ERROR_DEFAULT "An error has occurred, exiting shell..."
-#define ERROR_NO_ARGS "You haven't entered a command. Please try again."
-#define ERROR_CD_INVALID_DIRECTORY "Invalid directory."
-#define ERROR_CWD_INVALID "Invalid current working directory."
-#define ERROR_FORKING "Forking error."
-#define ERROR_WAITPID "Error while awaiting background process."
-#define ERROR_JOB_EXECUTION "Error during job execution."
-#define ERROR_JOB_CREATION "Error creationg a new job."
 #define CURRENT_DIRECTORY "Current directory: '%s'"
+#define ERROR_CD_INVALID_DIRECTORY "Invalid directory."
+#define ERROR_CHILD_PROCESS "Error in child process during command execution."
+#define ERROR_CWD_INVALID "Invalid current working directory."
+#define ERROR_DEFAULT "An error has occurred, exiting shell..."
+#define ERROR_FG "Error while bringing process to foreground."
+#define ERROR_FORKING "Forking error."
+#define ERROR_JOB_CREATION "Error creationg a new job."
+#define ERROR_JOB_EXECUTION "Error during job execution."
+#define ERROR_NO_ARGS "You haven't entered a command. Please try again."
+#define ERROR_WAITPID "Error while awaiting background process."
 #define EXIT_MESSAGE "Exiting..."
+#define JOBS_LIST "Background jobs\n -----------------------\n"
+#define PRESENTATION "Alexander Bratyshkin --- 260684228 --- Assignment 1 --- ECSE 427"
 
 // HASH CONSTANTS FOR COMMANDS
 #define CD_HASH 5863276
 #define EXIT_HASH 2090237503
+#define FG_HASH 5863378
+#define JOBS_HASH 2090407155
 #define LS_HASH 5863588
 
 // MISC CONSTANTS
 #define MAX_JOBS 20 // Max number of jobs to be displayed at any point in time.
+
+// ENUM FOR STATUS OF JOB
+enum status
+{
+    RUNNING,
+    FINISHED,
+    STOPPED
+} status;
 
 // STRUCT DEFINITION FOR JOBS
 typedef struct job
@@ -39,20 +51,28 @@ typedef struct job
     struct job *next;
     pid_t process_id;
     char *command;
+    enum status status;
 } job;
 
 // FUNCTION PROTOTYPES
+const char *get_status(enum status status);
+int execute_built_in(char *args[], job *head_job);
+int execute_cd(char *path);
+int execute_fg(char *job_id_string, job *head_job);
+int execute_fork(char *args[]);
+int execute_non_fork(char *args[]);
+int execute_pwd();
+int getcmd(char *prompt, char *args[], int *background);
+int jobs_length(job *head);
 job *add_job(struct job *head, pid_t pid, char *command);
 job *create_job(char *command, int pid, job *next);
-void print_jobs(job *job);
-void execute_job(char *args[], int bg, job **head_job);
-int execute_non_fork(char *args[]);
-int execute_fork(char *args[]);
-int execute_cd(char *path);
-int exec_pwd();
 unsigned long hash(unsigned char *str);
+void execute_job(char *args[], int bg, job **head_job);
+void print_jobs(job *job);
 void prompt_message(char *message, ...);
-int getcmd(char *prompt, char *args[], int *background);
+
+// GLOBAL VARIABLE
+struct job *head_job; // sorry for having a global variable, but unfortunately it's needed for signal handling
 
 // TODO: Add verbose global constant to toggle debug statements :)
 
@@ -64,8 +84,9 @@ int getcmd(char *prompt, char *args[], int *background);
 int main(void)
 {
     int bg;
-    struct job *head_job = NULL;
+    head_job = NULL;
     prompt_message(PRESENTATION);
+    // signal(SIGCHLD, child_job_termination);
 
     while (1)
     {
@@ -87,6 +108,7 @@ int main(void)
         if (cnt == -1)
         {
             prompt_message(ERROR_DEFAULT);
+            exit(1);
         }
 
         if (cnt == 0)
@@ -110,7 +132,11 @@ int main(void)
         }
 
         // pass the first null job by reference
-        execute_job(args, bg, &head_job);
+
+        if (execute_built_in(args, head_job) == 2)
+        {
+            execute_job(args, bg, &head_job);
+        }
     }
 }
 
@@ -137,10 +163,41 @@ int execute_non_fork(char *args[])
         break;
     default:
         return 2;
+        break;
     }
 }
 
 // BUILT-IN COMMANDS SECTION
+
+/** 
+ * @brief  Execute the built-in commands that are forkable
+ * @note   
+ * @param  *args[]: 
+ * @retval 
+ */
+int execute_built_in(char *args[], job *head_job)
+{
+    int argument = hash(args[0]);
+
+    switch (argument)
+    {
+    case JOBS_HASH:
+        print_jobs(head_job);
+        return 1;
+        break;
+    case FG_HASH:
+        if (execute_fg(args[1], head_job) == 0)
+        {
+            prompt_message(ERROR_FG);
+            return 0;
+        }
+        return 1;
+        break;
+    default:
+        return 2;
+        break;
+    }
+}
 
 /** 
  * @brief  Execute job
@@ -154,17 +211,18 @@ void execute_job(char *args[], int bg, job **head_job)
 {
     int pid = fork();
 
-    if (pid < 0)
+    switch (pid)
     {
+    case -1:
         prompt_message(ERROR_FORKING);
-    }
-    else if (pid == 0)
-    {
+        break;
+    case 0:
         // TODO: to test jobs, put an await signal or something like that so that you see the command running despite &
+        // TODO: HOW TO TRACK ZOMBIE PROCESSES?
         execvp(args[0], args);
-    }
-    else
-    {
+        prompt_message(ERROR_CHILD_PROCESS);
+        break;
+    default:
         if (bg == 0)
         {
             int status;
@@ -178,6 +236,7 @@ void execute_job(char *args[], int bg, job **head_job)
             *head_job = add_job(*head_job, pid, args[0]);
             print_jobs(*head_job);
         }
+        break;
     }
 }
 
@@ -211,8 +270,6 @@ job *add_job(struct job *head, pid_t pid, char *command)
     new_job = create_job(command, pid, NULL);
     buffer->next = new_job;
 
-    printf("I'm here");
-
     return head;
 }
 
@@ -235,6 +292,7 @@ job *create_job(char *command, int pid, job *next)
     new_job->command = command;
     new_job->process_id = pid;
     new_job->next = next;
+    new_job->status = RUNNING; // upon the moment of creation, we assume that the job is running
 
     return new_job;
 }
@@ -247,12 +305,120 @@ job *create_job(char *command, int pid, job *next)
  */
 void print_jobs(job *head)
 {
+    prompt_message(JOBS_LIST);
     job *buffer = head;
     while (buffer != NULL)
     {
-        printf("\n %d", buffer->process_id);
+        printf("\n %d [%s]", buffer->process_id, get_status(buffer->status));
         buffer = buffer->next;
     }
+}
+
+/** 
+ * @brief  Returns the length of the linked list of jobs
+ * @note   
+ * @param  *head: 
+ * @retval Length of linked list of jobs
+ */
+int jobs_length(job *head)
+{
+    int length = 0;
+    job *buffer = head;
+    while (buffer != NULL)
+    {
+        length++;
+        buffer = buffer->next;
+    }
+
+    printf("\nLength: %i", length);
+    return length;
+}
+
+job *retrieve_job_at_index(job *head, int index)
+{
+    int buffer_index = 1;
+    job *buffer = head;
+    while (buffer != NULL)
+    {
+        if (buffer_index == index)
+        {
+            return buffer;
+        }
+
+        buffer_index++;
+        buffer = buffer->next;
+    }
+
+    return NULL;
+}
+
+job *retrieve_first_running_job(job *head)
+{
+    int buffer_index = 1;
+    job *buffer = head;
+    while (buffer != NULL)
+    {
+        if (buffer->status == RUNNING)
+        {
+            return buffer;
+        }
+
+        buffer_index++;
+        buffer = buffer->next;
+    }
+
+    return NULL;
+}
+
+/** 
+ * @brief  
+ * @note   
+ * @param  *job: 
+ * @param  *head_job: 
+ * @retval 
+ */
+
+int execute_fg(char *job_id_string, job *head_job)
+{
+    int job_id = (job_id_string == NULL) ? 0 : atoi(job_id_string);
+    printf("\nATOI RESULT: %i", job_id);
+
+    if (job_id < 0)
+    {
+        return 0;
+    }
+    else if (job_id == 0)
+    {
+        printf("Am I here? 1");
+        job *retrieve_job = retrieve_first_running_job(head_job);
+
+        // if job is null, execute fg on head node
+        if (retrieve_job == NULL || waitpid(retrieve_job->process_id, NULL, 0) < 0)
+        {
+            return 0;
+        }
+    }
+    else if (job_id <= jobs_length(head_job))
+    {
+        // if job is less than the length of list of jobs, we assume that the user has entered a job number
+        job *retrieve_job = retrieve_job_at_index(head_job, job_id);
+
+        if (retrieve_job == NULL || waitpid(retrieve_job->process_id, NULL, 0) < 0)
+        {
+            return 0;
+        }
+    }
+    else
+    {
+        printf("\n JOB ID DEBUG: %d", job_id);
+        // otherwise, the user wants to bring job to foreground by pid
+        if (waitpid((pid_t)job_id, NULL, 0) < 0)
+        {
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 /** 
@@ -274,7 +440,7 @@ int execute_cd(char *path)
         return 0;
     }
 
-    if (exec_pwd() == 0)
+    if (execute_pwd() == 0)
     {
         return 0;
     }
@@ -287,7 +453,7 @@ int execute_cd(char *path)
  * @note   
  * @retval 
  */
-int exec_pwd()
+int execute_pwd()
 {
     char cwd[1024];
     if (getcwd(cwd, sizeof(cwd)) == NULL)
@@ -301,6 +467,26 @@ int exec_pwd()
 }
 
 // HELPER SECTION
+
+/** 
+ * @brief  Get string for the job status enum of the job
+ * @note   
+ * @param  status: Status of the job in enum representation 
+ * @retval String representation of the job's enum
+ */
+
+const char *get_status(enum status status)
+{
+    switch (status)
+    {
+    case RUNNING:
+        return "RUNNING";
+    case FINISHED:
+        return "FINISHED";
+    case STOPPED:
+        return "STOPPED";
+    }
+}
 
 /** 
  * @brief Function provided by Prof. Harmouche
