@@ -194,6 +194,7 @@ job *add_job(struct job *head, pid_t pid, char *command)
     job *buffer = head;
     job *new_job;
 
+    // if we're at the beginning of the linked list, create a new first job
     if (buffer == NULL)
     {
         new_job = create_job(command, pid, NULL);
@@ -218,9 +219,9 @@ job *add_job(struct job *head, pid_t pid, char *command)
 /** 
  * @brief  Creates a new job "job" object 
  * @note   
- * @param  *command: 
- * @param  pid: 
- * @param  *next: 
+ * @param  *command: Job's command
+ * @param  pid: Job's PID
+ * @param  *next: Next job to point to
  * @retval Newly created job
  */
 job *create_job(char *command, int pid, job *next)
@@ -238,6 +239,12 @@ job *create_job(char *command, int pid, job *next)
     return new_job;
 }
 
+/** 
+ * @brief  Prints the whole list of background jobs
+ * @note   
+ * @param  *head: Head of the list of jobs
+ * @retval None
+ */
 void print_jobs(job *head)
 {
     job *buffer = head;
