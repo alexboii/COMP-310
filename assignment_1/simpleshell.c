@@ -12,13 +12,16 @@
 // 1 - Do we need to implement "pwd?"
 // 2 - What's considered "other built-in features" for 20% in the grading scheme?
 
-// CONSTANTS
+// PROMPT CONSTANTS
 #define PRESENTATION "Alexander Bratyshkin --- 260684228 --- Assignment 1 --- ECSE 427"
 #define ERROR_DEFAULT "An error has occurred, exiting shell..."
 #define ERROR_NO_ARGS "You haven't entered a command. Please try again."
 #define ERROR_CD_INVALID_DIRECTORY "Invalid directory."
 #define ERROR_CWD_INVALID "Invalid current working directory."
 #define ERROR_FORKING "Forking error."
+#define ERROR_WAITPID "Error while awaiting background process."
+#define ERROR_JOB_EXECUTION "Error during job execution."
+#define ERROR_JOB_CREATION "Error creationg a new job."
 #define CURRENT_DIRECTORY "Current directory: '%s'"
 #define EXIT_MESSAGE "Exiting..."
 
@@ -27,7 +30,22 @@
 #define EXIT_HASH 2090237503
 #define LS_HASH 5863588
 
+// MISC CONSTANTS
+#define MAX_JOBS 20 // Max number of jobs to be displayed at any point in time.
+
+// STRUCT DEFINITION FOR JOBS
+typedef struct job
+{
+    struct job *next;
+    pid_t process_id;
+    char *command;
+} job;
+
 // FUNCTION PROTOTYPES
+job *add_job(struct job *head, pid_t pid, char *command);
+job *create_job(char *command, int pid, job *next);
+void print_jobs(job *job);
+void execute_job(char *args[], int bg, job **head_job);
 int execute_non_fork(char *args[]);
 int execute_fork(char *args[]);
 int execute_cd(char *path);
@@ -36,24 +54,19 @@ unsigned long hash(unsigned char *str);
 void prompt_message(char *message, ...);
 int getcmd(char *prompt, char *args[], int *background);
 
-// STRUCT DEFINITION FOR JOBS
-typedef struct job
-{
-    struct job *next;
-    char *command;
-    pid_t process;
-    int stopped;
-} job;
+// TODO: Add verbose global constant to toggle debug statements :)
 
 /** 
  * @brief  Assignment 1
- * @note   
+ * @note   Alexander Bratyshkin - 260684228
  * @retval 
  */
 int main(void)
 {
     int bg;
+    struct job *head_job = NULL;
     prompt_message(PRESENTATION);
+
     while (1)
     {
         // delocalize memory from command line arguments
@@ -96,26 +109,8 @@ int main(void)
             continue;
         }
 
-        int pid = fork();
-
-        if (pid < 0)
-        {
-            prompt_message(ERROR_FORKING);
-            continue;
-        }
-        else if (pid == 0)
-        {
-            // TODO: to test jobs, put an await signal or something like that so that you see the command running despite &
-            execvp(args[0], args);
-        }
-        else
-        {
-            int status;
-            if (bg == 0)
-            {
-                waitpid(pid, &status, WUNTRACED);
-            }
-        }
+        // pass the first null job by reference
+        execute_job(args, bg, &head_job);
     }
 }
 
@@ -145,7 +140,113 @@ int execute_non_fork(char *args[])
     }
 }
 
-// COMMANDS SECTION
+// BUILT-IN COMMANDS SECTION
+
+/** 
+ * @brief  Execute job
+ * @note   
+ * @param  *jobs: 
+ * @param  pid: 
+ * @param  *args: 
+ * @retval 
+ */
+void execute_job(char *args[], int bg, job **head_job)
+{
+    int pid = fork();
+
+    if (pid < 0)
+    {
+        prompt_message(ERROR_FORKING);
+    }
+    else if (pid == 0)
+    {
+        // TODO: to test jobs, put an await signal or something like that so that you see the command running despite &
+        execvp(args[0], args);
+    }
+    else
+    {
+        if (bg == 0)
+        {
+            int status;
+            if (waitpid(pid, &status, WUNTRACED) < 0)
+            {
+                prompt_message(ERROR_WAITPID);
+            }
+        }
+        else
+        {
+            *head_job = add_job(*head_job, pid, args[0]);
+            print_jobs(*head_job);
+        }
+    }
+}
+
+/** 
+ * @brief Add job to end of list of jobs
+ * @note   
+ * @param  *jobs: List of jobs
+ * @param  pid: Process id of job
+ * @param  *args: Command
+ * @retval 
+ */
+job *add_job(struct job *head, pid_t pid, char *command)
+{
+    job *buffer = head;
+    job *new_job;
+
+    if (buffer == NULL)
+    {
+        new_job = create_job(command, pid, NULL);
+        head = new_job;
+        return head;
+    }
+
+    // TODO: extract this functionality into its own method (for print as well could be useful, also useful for a stop parameter)
+    while (buffer->next != NULL)
+    {
+        buffer = buffer->next;
+    }
+
+    new_job = create_job(command, pid, NULL);
+    buffer->next = new_job;
+
+    printf("I'm here");
+
+    return head;
+}
+
+/** 
+ * @brief  Creates a new job "job" object 
+ * @note   
+ * @param  *command: 
+ * @param  pid: 
+ * @param  *next: 
+ * @retval Newly created job
+ */
+job *create_job(char *command, int pid, job *next)
+{
+    job *new_job = (job *)malloc(sizeof(job));
+    if (new_job == NULL)
+    {
+        printf(ERROR_JOB_CREATION);
+    }
+
+    new_job->command = command;
+    new_job->process_id = pid;
+    new_job->next = next;
+
+    return new_job;
+}
+
+void print_jobs(job *head)
+{
+    job *buffer = head;
+    while (buffer != NULL)
+    {
+        printf("\n %d", buffer->process_id);
+        buffer = buffer->next;
+    }
+}
 
 /** 
  * @brief  Function to execute "cd" command
