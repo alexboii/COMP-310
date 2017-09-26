@@ -19,6 +19,7 @@
 // 2 - Memory leaks
 // 3 - Go through todos
 // 4 - Comment code
+// 6 - Store foreground in global variable instead of searching for foreground in list of jobs
 
 // PROMPT CONSTANTS
 #define CURRENT_DIRECTORY "Current directory: '%s'"
