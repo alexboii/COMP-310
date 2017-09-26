@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <time.h>
 // QUESTIONS
 // 1 - What's considered "other built-in features" for 20% in the grading scheme?
 // 2 - Do we have to handle stopped jobs, i.e. jobs that we can resume again afterwards?
@@ -33,7 +34,7 @@
 #define ERROR_NO_ARGS "You haven't entered a command. Please try again."
 #define ERROR_SIGNAL_BINDING "Could not bind signal handler for child process. Aborting..."
 #define ERROR_WAITPID "Error while awaiting background process."
-#define EXIT_MESSAGE "Exiting...\n"
+#define EXIT_MESSAGE "Exiting..."
 #define JOBS_LIST "Background jobs\n -----------------------\n"
 #define PRESENTATION "Alexander Bratyshkin --- 260684228 --- Assignment 1 --- ECSE 427"
 
@@ -75,21 +76,22 @@ int execute_non_fork(char *args[]);
 int execute_pwd();
 int getcmd(char *prompt, char *args[], int *background);
 int jobs_length(job *head);
-job *add_job(struct job *head, pid_t pid, char *command, enum status status);
+job *add_job(struct job *head, pid_t pid, char *command);
 job *change_job_status(job *head_job, pid_t pid, enum status status);
-job *create_job(char *command, int pid, job *next, enum status status);
+job *create_job(char *command, int pid, job *next);
+job *delete_job_by_pid(pid_t pid, job *head_job);
 unsigned long hash(unsigned char *str);
 void execute_job(char *args[], int bg, job **head_job);
 void print_jobs(job *job);
 void prompt_message(char *message, ...);
 void signal_child_handler();
-void signal_int_handler(int sig);
-job *retrieve_foreground_job(job *head);
-job *delete_job_by_pid(pid_t pid, job *head_job);
+void kill_process(); // TODO: CHANGE NAME OF THIS
 job *retrieve_job_by_pid(job *head, pid_t pid);
+void test();
 
 // GLOBAL VARIABLE
-struct job *head_job; // sorry for having a global variable, but unfortunately it's needed for signal handling
+struct job *head_job; // sorry for having a global variable, but unfortunately it's needed for signal handling because c doesn't let you pass parameters to signal handlers
+pid_t fg_pid;
 
 // TODO: Add verbose global constant to toggle debug statements :)
 
@@ -100,12 +102,11 @@ struct job *head_job; // sorry for having a global variable, but unfortunately i
  */
 int main(void)
 {
-    char *args[20]; // TODO: Extract this constant
     int bg;
     head_job = NULL;
     prompt_message(PRESENTATION);
 
-    if (signal(SIGCHLD, signal_child_handler) == SIG_ERR || signal(SIGINT, signal_int_handler) == SIG_ERR || signal(SIGTSTP, SIG_IGN) == SIG_ERR)
+    if (signal(SIGCHLD, signal_child_handler) == SIG_ERR || signal(SIGTSTP, SIG_IGN) == SIG_ERR || signal(SIGINT, test) == SIG_ERR)
     {
         prompt_message(ERROR_SIGNAL_BINDING);
         exit(EXIT_FAILURE);
@@ -114,6 +115,7 @@ int main(void)
     while (1)
     {
         // delocalize memory from command line arguments
+        char *args[20] = {NULL};
         bg = 0;
         int cnt = getcmd("\n>> ", args, &bg);
 
@@ -161,8 +163,6 @@ int main(void)
         {
             execute_job(args, bg, &head_job);
         }
-
-        memset(args, 0, sizeof(args) * sizeof(char *));
     }
 }
 
@@ -236,6 +236,8 @@ int execute_built_in(char *args[], job *head_job)
 void execute_job(char *args[], int bg, job **head_job)
 {
     int pid = fork();
+    time_t now;
+    srand((unsigned int)(time(&now)));
 
     switch (pid)
     {
@@ -245,36 +247,43 @@ void execute_job(char *args[], int bg, job **head_job)
     case 0:
         // TODO: to test jobs, put an await signal or something like that so that you see the command running despite &
         // TODO: HOW TO TRACK ZOMBIE PROCESSES?
+
         if (bg == 1)
         {
-            signal(SIGINT, SIG_IGN); // ignore ctrl + c
+            signal(SIGINT, test);
         }
 
-        sleep(10);
+        sleep(5);
+
         execvp(args[0], args);
         prompt_message(ERROR_CHILD_PROCESS);
         *head_job = change_job_status(*head_job, pid, FINISHED);
+        exit(EXIT_FAILURE);
         break;
     default:
         if (bg == 0)
         {
             int status;
-            *head_job = add_job(*head_job, pid, args[0], FOREGROUND);
+            fg_pid = pid;
             if (waitpid(pid, &status, WUNTRACED) < 0)
             {
                 prompt_message(ERROR_WAITPID);
-                exit(EXIT_FAILURE);
             }
-
-            *head_job = delete_job_by_pid(pid, *head_job);
         }
         else
         {
-            *head_job = add_job(*head_job, pid, args[0], RUNNING);
-            printf("Job with PID %d put in background\n", pid); // TODO: REPLACE
+            int w;
+            w = rand() % 10;
+            *head_job = add_job(*head_job, pid, args[0]);
+            print_jobs(*head_job);
         }
         break;
     }
+}
+
+void test()
+{
+    printf("I'm here");
 }
 
 /** 
@@ -285,7 +294,7 @@ void execute_job(char *args[], int bg, job **head_job)
  * @param  *args: Command
  * @retval 
  */
-job *add_job(struct job *head, pid_t pid, char *command, enum status status)
+job *add_job(struct job *head, pid_t pid, char *command)
 {
     job *buffer = head;
     job *new_job;
@@ -293,7 +302,7 @@ job *add_job(struct job *head, pid_t pid, char *command, enum status status)
     // if we're at the beginning of the linked list, create a new first job
     if (buffer == NULL)
     {
-        new_job = create_job(command, pid, NULL, status);
+        new_job = create_job(command, pid, NULL);
         head = new_job;
         return head;
     }
@@ -304,31 +313,10 @@ job *add_job(struct job *head, pid_t pid, char *command, enum status status)
         buffer = buffer->next;
     }
 
-    new_job = create_job(command, pid, NULL, status);
+    new_job = create_job(command, pid, NULL);
     buffer->next = new_job;
 
     return head;
-}
-
-job *delete_job_by_pid(pid_t pid, job *head_job)
-{
-    if (head_job == NULL)
-    {
-        // if nothing is in the linked list (should never reach this code with current workflow though)
-        return NULL;
-    }
-
-    if (head_job->process_id == pid)
-    {
-        job *buffer = head_job->next;
-        free(head_job);
-
-        return buffer;
-    }
-
-    head_job->next = delete_job_by_pid(pid, head_job->next);
-
-    return head_job;
 }
 
 /** 
@@ -339,7 +327,7 @@ job *delete_job_by_pid(pid_t pid, job *head_job)
  * @param  *next: Next job to point to
  * @retval Newly created job
  */
-job *create_job(char *command, int pid, job *next, enum status status)
+job *create_job(char *command, int pid, job *next)
 {
     job *new_job = (job *)malloc(sizeof(job));
     if (new_job == NULL)
@@ -350,7 +338,7 @@ job *create_job(char *command, int pid, job *next, enum status status)
     new_job->command = command;
     new_job->process_id = pid;
     new_job->next = next;
-    new_job->status = status; // upon the moment of creation, we assume that the job is running
+    new_job->status = RUNNING; // upon the moment of creation, we assume that the job is running
 
     return new_job;
 }
@@ -428,9 +416,9 @@ job *retrieve_job_by_pid(job *head, pid_t pid)
     return NULL;
 }
 
-// TODO: Refactor this?
 job *retrieve_first_running_job(job *head)
 {
+    int buffer_index = 1;
     job *buffer = head;
     while (buffer != NULL)
     {
@@ -439,22 +427,7 @@ job *retrieve_first_running_job(job *head)
             return buffer;
         }
 
-        buffer = buffer->next;
-    }
-
-    return NULL;
-}
-
-job *retrieve_foreground_job(job *head)
-{
-    job *buffer = head;
-    while (buffer != NULL)
-    {
-        if (buffer->status == FOREGROUND)
-        {
-            return buffer;
-        }
-
+        buffer_index++;
         buffer = buffer->next;
     }
 
@@ -478,22 +451,26 @@ job *change_job_status(job *head_job, pid_t pid, enum status status)
     return head_job;
 }
 
-// job *update_all_jobs(job *head_job)
-// {
-//     job *buffer = head_job;
-//     while (buffer != NULL)
-//     {
-//         if (buffer->process_id == pid)
-//         {
-//             buffer->status = status;
-//             break;
-//         }
+job *delete_job_by_pid(pid_t pid, job *head_job)
+{
+    if (head_job == NULL)
+    {
+        // if nothing is in the linked list (should never reach this code with current workflow though)
+        return NULL;
+    }
 
-//         buffer = buffer->next;
-//     }
+    if (head_job->process_id == pid)
+    {
+        job *buffer = head_job->next;
+        free(head_job);
 
-//     return head_job;
-// }
+        return buffer;
+    }
+
+    head_job->next = delete_job_by_pid(pid, head_job->next);
+
+    return head_job;
+}
 
 /** 
  * @brief  
@@ -508,8 +485,6 @@ int execute_fg(char *job_id_string, job *head_job_local)
     int job_id = (job_id_string == NULL) ? 0 : atoi(job_id_string);
     pid_t pid_buffer;
 
-    printf("job_id %i", job_id);
-
     // TODO: Extract errors to constats
 
     if (job_id < 0)
@@ -521,7 +496,7 @@ int execute_fg(char *job_id_string, job *head_job_local)
     else if (job_id == 0)
     {
         printf("Am I here? 1");
-        job *retrieve_job = retrieve_first_running_job(head_job);
+        job *retrieve_job = retrieve_first_running_job(head_job_local);
 
         if (retrieve_job == NULL)
         {
@@ -529,45 +504,33 @@ int execute_fg(char *job_id_string, job *head_job_local)
             return 0;
         }
 
-        // TODO: Extract this into own method
-        pid_buffer = retrieve_job->process_id;
         head_job = change_job_status(head_job, pid_buffer, FOREGROUND);
-        signal(SIGINT, signal_int_handler);
+
         // if job is null, execute fg on head node
-        if (waitpid(pid_buffer, NULL, 0) < 0)
+        if (waitpid(pid_buffer = retrieve_job->process_id, NULL, 0) < 0)
         {
             return 0;
         }
     }
-    else if (job_id <= jobs_length(head_job))
+    else if (job_id <= jobs_length(head_job_local))
     {
         // if job is less than the length of list of jobs, we assume that the user has entered a job number
-        job *retrieve_job = retrieve_job_at_index(head_job, job_id);
+        job *retrieve_job = retrieve_job_at_index(head_job_local, job_id);
 
         if (retrieve_job == NULL)
         {
-            printf("retrieve job null?");
             return 0;
         }
 
-        if (retrieve_job->status == FINISHED)
-        {
-            exit(EXIT_FAILURE);
-            return 0;
-        }
-
-        pid_buffer = retrieve_job->process_id;
         head_job = change_job_status(head_job, pid_buffer, FOREGROUND);
-        signal(SIGINT, signal_int_handler);
 
-        if (waitpid(pid_buffer, NULL, 0) < 0)
+        if (waitpid(pid_buffer = retrieve_job->process_id, NULL, 0) < 0)
         {
             return 0;
         }
     }
     else
     {
-        printf("Am I here in process pid?");
         if (getpgid(pid_buffer = job_id) < 0)
         {
             printf("Process with PID %d does not exist or has already been terminated. ", job_id);
@@ -575,7 +538,6 @@ int execute_fg(char *job_id_string, job *head_job_local)
         }
 
         head_job = change_job_status(head_job, pid_buffer, FOREGROUND);
-        signal(SIGINT, signal_int_handler);
 
         // otherwise, the user wants to bring job to foreground by pid
         if (waitpid((pid_t)job_id, NULL, 0) < 0)
@@ -635,22 +597,8 @@ int execute_pwd()
     return 1;
 }
 
-// SIGNAL HANDLERS
+// CHILD SIGNAL HANDLER
 
-void signal_int_handler(int sig)
-{
-    job *buffer = retrieve_foreground_job(head_job);
-
-    if (buffer == NULL)
-    {
-        return;
-    }
-
-    if (sig == SIGINT)
-    {
-        kill(buffer->process_id, SIGKILL);
-    }
-}
 /** 
  * @brief  
  * @note   
@@ -658,33 +606,66 @@ void signal_int_handler(int sig)
  */
 void signal_child_handler()
 {
+    int status = -1;
     pid_t pid;
-    int status;
 
     // we iterate through all active child pids
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
     {
 
-        job *buffer = retrieve_job_by_pid(head_job, pid);
-        if (buffer != NULL)
+        if (WIFSTOPPED(status))
         {
-            if (buffer->status == FOREGROUND)
-            {
-                head_job = delete_job_by_pid(pid, head_job);
-            }
-            else
-            {
-                printf("When do I reach here?");
-                head_job = change_job_status(head_job, pid, FINISHED);
-            }
-
-            if (WIFEXITED(status))
-            {
-                printf("\n>> ");
-                fflush(stdout); // TODO: Extract constant
-            }
+            // ignore ctrl + z signal
+            printf("entered 3");
+            return;
         }
+
+        if (WIFEXITED(status))
+        {
+            printf("I've finished");
+        }
+
+        printf("\n pid from signal %d", pid);
+        // if (WIFEXITED(status))
+        // {
+        // job finished correctly
+
+        // job *buffer = retrieve_job_by_pid(head_job, pid);
+
+        // if (WIFEXITED(status) || (WIFSIGNALED(status) && (buffer == NULL || buffer->status == FOREGROUND)))
+        // {
+        //     printf("I'm here, exit status: %i \n", WEXITSTATUS(status));
+        //     kill(pid, SIGKILL);
+        //     printf("entered 1");
+        //     head_job = change_job_status(head_job, pid, FINISHED);
+        // }
+        // // }
+        // else if (WIFSIGNALED(status))
+        // {
+        //     // job aborted by ctrl + c
+        //     printf("Process %d has been terminated", pid);
+        //     head_job = change_job_status(head_job, pid, FINISHED);
+        // }
+        // else if (WIFSTOPPED(status))
+        // {
+        //     // ignore ctrl + z signal
+        //     printf("entered 3");
+        //     return;
+        // }
+
+        // printf("\n did not enter anywhere %d", pid);
     }
+}
+
+void kill_process()
+{
+    printf("Am I here? kill process");
+    exit(EXIT_FAILURE);
+
+    int status = -1;
+    pid_t pid;
+
+    kill(fg_pid, SIGKILL);
 }
 
 // HELPER SECTION
@@ -797,3 +778,4 @@ void prompt_message(char *message, ...)
     vfprintf(stdout, message, ap);
     va_end(ap);
 }
+
