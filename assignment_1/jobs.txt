@@ -1,4 +1,0 @@
-Background jobs
- -----------------------
-
- [1] 29624          FINISHED
