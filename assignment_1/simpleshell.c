@@ -76,7 +76,7 @@ int execute_built_in(char *args[], job *head_job);
 int execute_cd(char *path);
 int execute_fg(char *job_id_string, job *head_job);
 int execute_fork(char *args[]);
-int execute_non_fork(char *args[]);
+int execute_non_fork(char *args[], int bg);
 int execute_pwd();
 int is_exit(char *first_arg);
 int is_fg(char *first_arg);
@@ -179,11 +179,7 @@ int main(void)
             args[cnt - 1] = NULL;
         }
 
-        if (is_fg(args[0]) == 1)
-        {
-            execute_fg(args[1], head_job);
-        }
-        else
+        if (execute_non_fork(args, bg) == 0)
         {
             execute_job(args, bg, redirect, &head_job);
         }
@@ -217,21 +213,25 @@ int main(void)
  * @param  *args[]: Arguments entered by user
  * @retval 1 for success, 0 for error, 2 for command not found
  */
-int execute_non_fork(char *args[])
+int execute_non_fork(char *args[], int bg)
 {
     unsigned long argument = hash(args[0]);
     switch (argument)
     {
     case CD_HASH:
+        if (bg == 1)
+        {
+            return 0;
+        }
         execute_cd(args[1]);
         return 1;
         break;
-    case EXIT_HASH:
-        prompt_message(EXIT_MESSAGE);
-        return 0;
+    case FG_HASH:
+        execute_fg(args[1], head_job);
+        return 1;
         break;
     default:
-        return 2;
+        return 0;
         break;
     }
 }
@@ -255,9 +255,9 @@ int execute_built_in(char *args[], job *head_job)
         return 1;
     case CD_HASH:
         execute_cd(args[1]);
-        return 0;
+        return 1;
     default:
-        return 2;
+        return 0;
     }
 }
 
@@ -290,32 +290,16 @@ void execute_job(char *args[], int bg, int redirect, job **head_job)
         }
 
         int built_in_result = execute_built_in(args, *head_job);
-        if (built_in_result == 2) // if 2 is returned, we're not asked to implement
+        if (built_in_result == 0) // if 2 is returned, we're not asked to implement
         {
             execvp(args[0], args);
             prompt_message(ERROR_CHILD_PROCESS);
             *head_job = change_job_status(*head_job, pid, FINISHED);
         }
-        else if (built_in_result != 0)
-        {
-            // if (bg)
-            // {
-            printf("Am I here?");
-            exit(EXIT_SUCCESS); // this condition allows us to do two things:
-                                // 1. if we're running cd in the background, we mimick the behaviour of the actual shell, which is to go to the requested directory and come back to the original one.
-                                // additionally, it lets us run cd normally if it's on foreground.
-                                // 2. allows us to run jobs in background properly (i.e. jobs &)
-            // }
-        }
         else
         {
-
             printf("Am I ever here?");
-            if (bg == 1)
-            {
-                printf("Am I ever here?");
-                exit(EXIT_SUCCESS);
-            }
+            exit(EXIT_SUCCESS);
         }
         break;
     default:
