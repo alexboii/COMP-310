@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <time.h>
 // QUESTIONS
 // 1 - What's considered "other built-in features" for 20% in the grading scheme?
 // 2 - Do we have to handle stopped jobs, i.e. jobs that we can resume again afterwards?
@@ -74,13 +75,13 @@ int execute_fg(char *job_id_string, job *head_job);
 int execute_fork(char *args[]);
 int execute_non_fork(char *args[]);
 int execute_pwd();
-int getcmd(char *prompt, char *args[], int *background);
+int getcmd(char *prompt, char *args[], int *background, int *redirect);
 int jobs_length(job *head);
 job *add_job(struct job *head, pid_t pid, char *command, enum status status);
 job *change_job_status(job *head_job, pid_t pid, enum status status);
 job *create_job(char *command, int pid, job *next, enum status status);
 unsigned long hash(unsigned char *str);
-void execute_job(char *args[], int bg, job **head_job);
+void execute_job(char *args[], int bg, int redirect, job **head_job);
 void print_jobs(job *job);
 void prompt_message(char *message, ...);
 void signal_child_handler();
@@ -88,6 +89,7 @@ void signal_int_handler(int sig);
 job *retrieve_foreground_job(job *head);
 job *delete_job_by_pid(pid_t pid, job *head_job);
 job *retrieve_job_by_pid(job *head, pid_t pid);
+void random_sleep();
 
 // GLOBAL VARIABLE
 struct job *head_job; // sorry for having a global variable, but unfortunately it's needed for signal handling
@@ -102,9 +104,11 @@ struct job *head_job; // sorry for having a global variable, but unfortunately i
 int main(void)
 {
     char *args[20]; // TODO: Extract this constant
-    int bg;
+    int bg, redirect, std_out, redirect_directory;
     head_job = NULL;
-    prompt_message(PRESENTATION);
+
+    time_t now;
+    srand((unsigned int)(time(&now)));
 
     if (signal(SIGCHLD, signal_child_handler) == SIG_ERR || signal(SIGINT, signal_int_handler) == SIG_ERR || signal(SIGTSTP, SIG_IGN) == SIG_ERR)
     {
@@ -112,18 +116,14 @@ int main(void)
         exit(EXIT_FAILURE);
     }
 
+    prompt_message(PRESENTATION);
+
     while (1)
     {
+        fflush(stdout);
         // delocalize memory from command line arguments
-        bg = 0;
-        int cnt = getcmd("\n>> ", args, &bg);
-
-        for (int i = 0; i < cnt; i++)
-        {
-            int test = hash(args[i]);
-            printf("\nArg[%d] = %s, %i", i, args[i], test);
-            printf("\n");
-        }
+        bg = 0, redirect = 0;
+        int cnt = getcmd("\n>> ", args, &bg, &redirect);
 
         // WHENEVER & IS THERE, DON'T WAITPID
 
@@ -140,30 +140,49 @@ int main(void)
             continue;
         }
 
+        int test = hash(args[0]);
+        printf("First argument hash: %i\n", test);
+
         // TODO: insert an error if > to one of the commands that are not ls, cat, jobs, etc.
 
         // we do not need to fork for the following commands, so simply execute them
 
         // TODO: VERY IMPORTANT => CHANGE THIS IN CASE WE ALLOWED TO EXECUTE OUR OWN BUILT INS
-        int result_non_fork = execute_non_fork(args);
-        if (result_non_fork == 0 || result_non_fork == 1)
-        {
-            if (result_non_fork == 0)
-            {
-                exit(1);
-            }
+        // int result_non_fork = execute_non_fork(args);
+        // if (result_non_fork == 0 || result_non_fork == 1)
+        // {
+        //     if (result_non_fork == 0)
+        //     {
+        //         exit(1);
+        //     }
 
-            continue;
+        //     continue;
+        // }
+
+        if (redirect == 1)
+        {
+            std_out = dup(STDOUT_FILENO);
+            close(STDOUT_FILENO);
+            redirect_directory = open(args[cnt - 1], O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+            args[cnt - 1] = NULL;
         }
 
         // pass the first null job by reference
 
-        if (execute_built_in(args, head_job) == 2)
+        execute_job(args, bg, redirect, &head_job);
+
+        // TODO: EXTRACT THIS METHOD
+        if (redirect == 1)
         {
-            execute_job(args, bg, &head_job);
+            close(redirect_directory);
+            dup(std_out);
+            close(std_out);
         }
 
-        memset(args, 0, sizeof(args) * sizeof(char *));
+        for (int i = 0; i < cnt; i++)
+        {
+            free(args[i]);
+        }
     }
 }
 
@@ -210,6 +229,7 @@ int execute_built_in(char *args[], job *head_job)
     {
     case JOBS_HASH:
         print_jobs(head_job);
+        sleep(1);
         return 1;
         break;
     case FG_HASH:
@@ -219,6 +239,14 @@ int execute_built_in(char *args[], job *head_job)
             return 0;
         }
         return 1;
+        break;
+    case CD_HASH:
+        execute_cd(args[1]);
+        return 1;
+        break;
+    case EXIT_HASH:
+        prompt_message(EXIT_MESSAGE);
+        exit(EXIT_SUCCESS);
         break;
     default:
         return 2;
@@ -234,7 +262,7 @@ int execute_built_in(char *args[], job *head_job)
  * @param  *args: 
  * @retval 
  */
-void execute_job(char *args[], int bg, job **head_job)
+void execute_job(char *args[], int bg, int redirect, job **head_job)
 {
     int pid = fork();
 
@@ -244,17 +272,19 @@ void execute_job(char *args[], int bg, job **head_job)
         prompt_message(ERROR_FORKING);
         break;
     case 0:
-        // TODO: to test jobs, put an await signal or something like that so that you see the command running despite &
-        // TODO: HOW TO TRACK ZOMBIE PROCESSES?
         if (bg == 1)
         {
-            signal(SIGINT, SIG_IGN); // ignore ctrl + c
+            signal(SIGINT, SIG_IGN); // ignore ctrl + c in case of background to prevent killing of background process
         }
 
-        sleep(10);
-        execvp(args[0], args);
-        prompt_message(ERROR_CHILD_PROCESS);
-        *head_job = change_job_status(*head_job, pid, FINISHED);
+        random_sleep();
+
+        if (execute_built_in(args, *head_job) == 2) // if 2 is returned, we're not asked to implement 
+        {
+            execvp(args[0], args);
+            prompt_message(ERROR_CHILD_PROCESS);
+            *head_job = change_job_status(*head_job, pid, FINISHED);
+        }
         break;
     default:
         if (bg == 0)
@@ -272,8 +302,14 @@ void execute_job(char *args[], int bg, job **head_job)
         else
         {
             *head_job = add_job(*head_job, pid, args[0], RUNNING);
-            printf("Job with PID %d put in background\n", pid); // TODO: REPLACE
+
+            if (redirect == 0)
+            {
+                printf("Job with PID %d put in background\n", pid); // TODO: REPLACE
+            }
         }
+
+        fflush(stdout);
         break;
     }
 }
@@ -370,6 +406,7 @@ void print_jobs(job *head)
     while (buffer != NULL)
     {
         printf("\n [%i] %d          %s", job_number, buffer->process_id, get_status(buffer->status));
+        fflush(stdout);
         job_number++;
         buffer = buffer->next;
     }
@@ -579,7 +616,7 @@ int execute_fg(char *job_id_string, job *head_job_local)
         signal(SIGINT, signal_int_handler);
 
         // otherwise, the user wants to bring job to foreground by pid
-        if (waitpid((pid_t)job_id, NULL, 0) < 0)
+        if (waitpid((pid_t)pid_buffer, NULL, 0) < 0)
         {
             printf("Wrong process id of job. ");
             return 0;
@@ -651,6 +688,10 @@ void signal_int_handler(int sig)
     {
         kill(buffer->process_id, SIGKILL);
     }
+    else
+    {
+        fflush(stdout);
+    }
 }
 /** 
  * @brief  
@@ -675,13 +716,11 @@ void signal_child_handler()
             }
             else
             {
-                printf("When do I reach here?");
                 head_job = change_job_status(head_job, pid, FINISHED);
             }
 
             if (WIFEXITED(status))
             {
-                printf("\n>> ");
                 fflush(stdout); // TODO: Extract constant
             }
         }
@@ -689,6 +728,22 @@ void signal_child_handler()
 }
 
 // HELPER SECTION
+
+/** 
+ * @brief  Function to sleep process
+ * @note   Provided by TA Aakash Nandi & Prof. Rola Harmouche
+ * @retval None
+ */
+void random_sleep()
+{
+    int w, rem;
+    w = rand() % 10;
+    rem = sleep(w); //handles interruption by signal
+    while (rem != 0)
+    {
+        rem = sleep(rem);
+    }
+}
 
 /** 
  * @brief  Get string for the job status enum of the job
@@ -720,7 +775,7 @@ const char *get_status(enum status status)
  * @param  *background: 
  * @retval Number of arguments
   */
-int getcmd(char *prompt, char *args[], int *background)
+int getcmd(char *prompt, char *args[], int *background, int *redirect)
 {
     int length, i = 0;
     char *token, *loc;
@@ -745,6 +800,15 @@ int getcmd(char *prompt, char *args[], int *background)
         *background = 0;
     }
 
+    if ((loc = index(line, '>')) != NULL)
+    {
+        *redirect = 1;
+        *loc = ' ';
+    }
+    else
+    {
+        *redirect = 0;
+    }
     while ((token = strsep(&line, " \t\n")) != NULL)
     {
         for (int j = 0; j < strlen(token); j++)
@@ -796,5 +860,6 @@ void prompt_message(char *message, ...)
 
     va_start(ap, message);
     vfprintf(stdout, message, ap);
+    fflush(stdout);
     va_end(ap);
 }
