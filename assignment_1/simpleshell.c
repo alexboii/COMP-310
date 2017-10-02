@@ -229,7 +229,6 @@ int execute_built_in(char *args[], job *head_job)
     {
     case JOBS_HASH:
         print_jobs(head_job);
-        sleep(1);
         return 1;
         break;
     case FG_HASH:
@@ -279,7 +278,7 @@ void execute_job(char *args[], int bg, int redirect, job **head_job)
 
         random_sleep();
 
-        if (execute_built_in(args, *head_job) == 2) // if 2 is returned, we're not asked to implement 
+        if (execute_built_in(args, *head_job) == 2) // if 2 is returned, we're not asked to implement
         {
             execvp(args[0], args);
             prompt_message(ERROR_CHILD_PROCESS);
