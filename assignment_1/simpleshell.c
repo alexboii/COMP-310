@@ -14,6 +14,9 @@
 // 3 - If I have two jobs running in the background, are both supposed to terminate when I click ctrl + c?
 // 4 - If one job is on fg, and the other job is on bg, and we click ctrl + c -- are both jobs going to be suspended?
 // 5 - Do we exit shell with ctrl + c? What happens with ctrl + c exactly?
+// IMPORTANT:
+// - Do jobs, fg, cd et al have to be supported as bg processes?
+// - 20% for additional features
 
 // PRIORITIES
 // 1 - Setup output redirection
@@ -41,9 +44,9 @@
 
 // HASH CONSTANTS FOR COMMANDS
 #define CD_HASH 5863276
-#define EXIT_HASH 2090237503
+#define EXIT_HASH 6385204799
 #define FG_HASH 5863378
-#define JOBS_HASH 2090407155
+#define JOBS_HASH 6385374451
 #define LS_HASH 5863588
 
 // MISC CONSTANTS
@@ -75,6 +78,8 @@ int execute_fg(char *job_id_string, job *head_job);
 int execute_fork(char *args[]);
 int execute_non_fork(char *args[]);
 int execute_pwd();
+int is_exit(char *first_arg);
+int is_fg(char *first_arg);
 int getcmd(char *prompt, char *args[], int *background, int *redirect);
 int jobs_length(job *head);
 job *add_job(struct job *head, pid_t pid, char *command, enum status status);
@@ -140,8 +145,13 @@ int main(void)
             continue;
         }
 
-        int test = hash(args[0]);
-        printf("First argument hash: %i\n", test);
+        if (is_exit(args[0]) == 1)
+        {
+            kill(0, SIGKILL);
+        }
+
+        unsigned long test = hash(args[0]);
+        printf("First argument hash: %lu\n", test);
 
         // TODO: insert an error if > to one of the commands that are not ls, cat, jobs, etc.
 
@@ -161,15 +171,24 @@ int main(void)
 
         if (redirect == 1)
         {
+
+            // TODO: Extract to separate method
             std_out = dup(STDOUT_FILENO);
             close(STDOUT_FILENO);
             redirect_directory = open(args[cnt - 1], O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
             args[cnt - 1] = NULL;
         }
 
-        // pass the first null job by reference
+        if (is_fg(args[0]) == 1)
+        {
+            execute_fg(args[1], head_job);
+        }
+        else
+        {
+            execute_job(args, bg, redirect, &head_job);
+        }
 
-        execute_job(args, bg, redirect, &head_job);
+        // pass the first null job by reference
 
         // TODO: EXTRACT THIS METHOD
         if (redirect == 1)
@@ -179,11 +198,15 @@ int main(void)
             close(std_out);
         }
 
-        for (int i = 0; i < cnt; i++)
-        {
-            free(args[i]);
-        }
+        memset(args, 0, sizeof(args) * sizeof(char *));
+
+        // for (int i = 0; i < (cnt - 3); i++)
+        // {
+        //     free(args[i]);
+        // }
     }
+
+    return EXIT_SUCCESS;
 }
 
 // FLOW-CONTROL SECTION
@@ -196,7 +219,7 @@ int main(void)
  */
 int execute_non_fork(char *args[])
 {
-    int argument = hash(args[0]);
+    unsigned long argument = hash(args[0]);
     switch (argument)
     {
     case CD_HASH:
@@ -223,33 +246,18 @@ int execute_non_fork(char *args[])
  */
 int execute_built_in(char *args[], job *head_job)
 {
-    int argument = hash(args[0]);
+    unsigned long argument = hash(args[0]);
 
     switch (argument)
     {
     case JOBS_HASH:
         print_jobs(head_job);
         return 1;
-        break;
-    case FG_HASH:
-        if (execute_fg(args[1], head_job) == 0)
-        {
-            prompt_message(ERROR_FG);
-            return 0;
-        }
-        return 1;
-        break;
     case CD_HASH:
         execute_cd(args[1]);
-        return 1;
-        break;
-    case EXIT_HASH:
-        prompt_message(EXIT_MESSAGE);
-        exit(EXIT_SUCCESS);
-        break;
+        return 0;
     default:
         return 2;
-        break;
     }
 }
 
@@ -276,13 +284,38 @@ void execute_job(char *args[], int bg, int redirect, job **head_job)
             signal(SIGINT, SIG_IGN); // ignore ctrl + c in case of background to prevent killing of background process
         }
 
-        random_sleep();
+        if (bg)
+        {
+            sleep(10);
+        }
 
-        if (execute_built_in(args, *head_job) == 2) // if 2 is returned, we're not asked to implement
+        int built_in_result = execute_built_in(args, *head_job);
+        if (built_in_result == 2) // if 2 is returned, we're not asked to implement
         {
             execvp(args[0], args);
             prompt_message(ERROR_CHILD_PROCESS);
             *head_job = change_job_status(*head_job, pid, FINISHED);
+        }
+        else if (built_in_result != 0)
+        {
+            // if (bg)
+            // {
+            printf("Am I here?");
+            exit(EXIT_SUCCESS); // this condition allows us to do two things:
+                                // 1. if we're running cd in the background, we mimick the behaviour of the actual shell, which is to go to the requested directory and come back to the original one.
+                                // additionally, it lets us run cd normally if it's on foreground.
+                                // 2. allows us to run jobs in background properly (i.e. jobs &)
+            // }
+        }
+        else
+        {
+
+            printf("Am I ever here?");
+            if (bg == 1)
+            {
+                printf("Am I ever here?");
+                exit(EXIT_SUCCESS);
+            }
         }
         break;
     default:
@@ -400,15 +433,23 @@ job *create_job(char *command, int pid, job *next, enum status status)
 void print_jobs(job *head)
 {
     prompt_message(JOBS_LIST);
-    job *buffer = head;
+    job *buffer = head_job;
     int job_number = 1;
+    int status = 0;
     while (buffer != NULL)
     {
-        printf("\n [%i] %d          %s", job_number, buffer->process_id, get_status(buffer->status));
+        // if (waitpid(buffer->process_id, &status, WNOHANG) > 0 && buffer->status != FINISHED)
+        // {
+        //     head_job = change_job_status(head_job, buffer->process_id, FINISHED);
+        // }
+
+        fprintf(stdout, "\n [%i] %d          %s", job_number, buffer->process_id, get_status(buffer->status));
         fflush(stdout);
         job_number++;
         buffer = buffer->next;
     }
+
+    printf("\n");
 }
 
 /** 
@@ -566,6 +607,12 @@ int execute_fg(char *job_id_string, job *head_job_local)
             return 0;
         }
 
+        if (retrieve_job->status == FINISHED)
+        {
+            printf("Job has already been finished");
+            return 0;
+        }
+
         // TODO: Extract this into own method
         pid_buffer = retrieve_job->process_id;
         head_job = change_job_status(head_job, pid_buffer, FOREGROUND);
@@ -672,6 +719,16 @@ int execute_pwd()
     return 1;
 }
 
+int is_fg(char *first_arg)
+{
+    return strcmp(first_arg, "fg") == 0;
+}
+
+int is_exit(char *first_arg)
+{
+    return strcmp(first_arg, "exit") == 0;
+}
+
 // SIGNAL HANDLERS
 
 void signal_int_handler(int sig)
@@ -720,6 +777,7 @@ void signal_child_handler()
 
             if (WIFEXITED(status))
             {
+                printf("\n>>");
                 fflush(stdout); // TODO: Extract constant
             }
         }

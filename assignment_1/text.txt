@@ -1,0 +1,7 @@
+a.out
+bleh_code.c
+jobs.txt
+ls
+simpleshell.c
+test.txt
+text.txt

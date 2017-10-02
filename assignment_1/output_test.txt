@@ -1,0 +1,13 @@
+a.out
+bleh_code.c
+fg.txt
+jobs.txt
+ls
+ls_output_redirection_bg.txt
+ls_output_redirection_bg_fg.txt
+ls_output_redirection_fg.txt
+output_test.txt
+simpleshell.c
+test.txt
+test_checker.txt
+text.txt
