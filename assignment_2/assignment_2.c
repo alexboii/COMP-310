@@ -12,6 +12,31 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#define SEM_LOC "/eharfoSem"
+#define SEM_COUNT_LOC SEM_LOC "count"
+
+///////////////////////////////////////////////////////
+//////////////// SHARED MEM DEFS //////////////////////
+//////////////////////////////////////////////////////
+#define NUM_TAB 10
+#define NUM_SEC 2
+#define MEM_LOC "/eharfo"
+#define NAME_LENGTH 50
+
+sem_t *countSem;
+sem_t *ctrl;
+
+int SEM_MODE = O_RDWR;
+int SEM_FLAG = S_IRUSR | S_IWUSR;
+
+//Shared memory flags
+int SHM_MODE = O_RDWR;
+int SHM_FLAG = S_IRUSR | S_IWUSR;
+
+//Memory mapping flags
+int MAP_MODE = PROT_READ | PROT_WRITE;
+int MAP_FLAG = MAP_SHARED;
+
 #pragma region CONSTANTS AND GLOBAL DEFINTION
 // #1 HASH CONSTANTS FOR COMMANDS
 #define INIT_HASH 6385337657
@@ -24,7 +49,7 @@
 #define MAX_RESERVATION_NAME 2500
 
 // #3 NAME CONSTANTS
-const char *MEMORY_NAME = "abraty";
+const char *MEMORY_NAME = "/abraty";
 
 // #4 ERROR MESSAGE CONSTANTS
 #define ERROR_SMH_OPEN "Could not perform smh_open.\n"
@@ -34,6 +59,7 @@ const char *MEMORY_NAME = "abraty";
 
 // #5 DEBUG STATEMENTS
 #define CREATION_OR_READ_SUCCESS "Sucessfully created or opened shared memory.\n"
+#define OPENING_EXISTING_MEMORY "Memory already created, allocating in O_RWRD mode...\n"
 
 // #6 FUNCTION PROTOTYPES
 int getcmd(char *prompt, char *args[]);
@@ -49,11 +75,15 @@ typedef struct
     char reservations[20][30];
 } Tables;
 
+int TAB_SIZE = sizeof(Tables);
+int MEM_SIZE = NUM_TAB * NUM_SEC * sizeof(Tables);
+int fd;
+
 // #7 GLOBAL MEMORY CONSTANT
 Tables *global_tables;
 
 // #8 TOGGLE DEBUG STATEMENTS
-int DEBUG_TOGGLE = 1;
+int DEBUG = 1;
 
 // #9 MISC
 #define LEN(arr) ((int)(sizeof(arr) / sizeof(arr)[0]))
@@ -67,17 +97,10 @@ int main(void)
 {
     char *args[20];
 
-    if (initialize_tables() != 0 && DEBUG_TOGGLE)
+    if (initialize_tables() != 0 && DEBUG)
     {
         printf(CREATION_OR_READ_SUCCESS);
     }
-
-    char *test = "ALEX";
-
-    make_reservation("10", test);
-    make_reservation("13", "BOII");
-    make_reservation("16", "BOII");
-    read_all();
 
     while (1)
     {
@@ -100,13 +123,19 @@ int execute_command(char *args[], int args_length)
 {
     unsigned long argument = hash(args[0]);
 
-    if (DEBUG_TOGGLE)
+    if (DEBUG)
     {
         printf("%s = %lu\n", args[0], argument);
     }
 
     switch (argument)
     {
+    case RESERVE_HASH:
+        make_reservation(args[1], args[2]);
+        break;
+    case STATUS_HASH:
+        read_all();
+        break;
     default:
         return 0;
         break;
@@ -122,8 +151,7 @@ int execute_command(char *args[], int args_length)
  */
 int initialize_tables()
 {
-
-    int fd = shm_open(MEMORY_NAME, O_CREAT | O_RDWR, S_IRWXU);
+    int fd = shm_open(MEMORY_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 
     if (fd == -1)
     {
@@ -131,7 +159,7 @@ int initialize_tables()
         return 0;
     }
 
-    global_tables = mmap(NULL, 8 * sizeof(global_tables), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    global_tables = mmap(0, MEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     if (global_tables == MAP_FAILED)
     {
@@ -139,7 +167,7 @@ int initialize_tables()
         return 0;
     }
 
-    if (ftruncate(fd, sizeof(global_tables)) == -1)
+    if (ftruncate(fd, MEM_SIZE) == -1)
     {
         perror(ERROR_FTRUNCANTE);
         return 0;
@@ -159,6 +187,7 @@ int make_reservation(char *table_no, char *name)
     // TODO: Add error checking for table > table size
     int i = atoi(table_no);
     strcpy(global_tables->reservations[i], name);
+    memcpy(global_tables, global_tables, sizeof(global_tables));
 
     return 1;
 }
