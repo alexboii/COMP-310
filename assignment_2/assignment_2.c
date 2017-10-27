@@ -12,32 +12,14 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#define SEM_LOC "/eharfoSem"
-#define SEM_COUNT_LOC SEM_LOC "count"
-
-///////////////////////////////////////////////////////
-//////////////// SHARED MEM DEFS //////////////////////
-//////////////////////////////////////////////////////
-#define NUM_TAB 10
-#define NUM_SEC 2
-#define MEM_LOC "/eharfo"
-#define NAME_LENGTH 50
-
-sem_t *countSem;
-sem_t *ctrl;
-
-int SEM_MODE = O_RDWR;
-int SEM_FLAG = S_IRUSR | S_IWUSR;
-
-//Shared memory flags
-int SHM_MODE = O_RDWR;
-int SHM_FLAG = S_IRUSR | S_IWUSR;
-
-//Memory mapping flags
-int MAP_MODE = PROT_READ | PROT_WRITE;
-int MAP_FLAG = MAP_SHARED;
-
 #pragma region CONSTANTS AND GLOBAL DEFINTION
+
+// SHARED MEMORY STRUCT FOR HOLDING TABLES
+typedef struct
+{
+    char reservations[20][30];
+} Tables;
+
 // #1 HASH CONSTANTS FOR COMMANDS
 #define INIT_HASH 6385337657
 #define EXIT_HASH 6385204799
@@ -47,15 +29,19 @@ int MAP_FLAG = MAP_SHARED;
 // #2 LIMIT CONSTANTS
 #define MAX_TABLE_SIZE 20
 #define MAX_RESERVATION_NAME 2500
+int MEMORY_SIZE = 20 * sizeof(Tables);
 
 // #3 NAME CONSTANTS
-const char *MEMORY_NAME = "/abraty";
+#define MEMORY_NAME "/abraty"
+#define SEM_NAME "/abraty_sem"
+#define SEM_COUNT_NAME "/abraty_sem_count"
 
 // #4 ERROR MESSAGE CONSTANTS
 #define ERROR_SMH_OPEN "Could not perform smh_open.\n"
 #define ERROR_MMAP "Could not perform mmap.\n"
 #define ERROR_FTRUNCANTE "Could not perform ftruncate.\n"
 #define ERROR_CLOSE "Could not close file descriptor.\n"
+#define ERROR_OPEN_SEMAPHORE "Could not open semaphore.\n"
 
 // #5 DEBUG STATEMENTS
 #define CREATION_OR_READ_SUCCESS "Sucessfully created or opened shared memory.\n"
@@ -69,21 +55,11 @@ int initialize_tables();
 int make_reservation(char *table, char *name);
 int read_all();
 
-// SHARED MEMORY STRUCT FOR HOLDING TABLES
-typedef struct
-{
-    char reservations[20][30];
-} Tables;
-
-int TAB_SIZE = sizeof(Tables);
-int MEM_SIZE = NUM_TAB * NUM_SEC * sizeof(Tables);
-int fd;
-
-// #7 GLOBAL MEMORY CONSTANT
+// #7 GLOBAL VARIABLES
 Tables *global_tables;
-
-// #8 TOGGLE DEBUG STATEMENTS
-int DEBUG = 1;
+int DEBUG = 1; // toggle debug statements
+sem_t *sem_count;
+sem_t *sem_proc;
 
 // #9 MISC
 #define LEN(arr) ((int)(sizeof(arr) / sizeof(arr)[0]))
@@ -151,7 +127,7 @@ int execute_command(char *args[], int args_length)
  */
 int initialize_tables()
 {
-    int fd = shm_open(MEMORY_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    int fd = shm_open(MEMORY_NAME, O_CREAT | O_RDWR, S_IRWXU);
 
     if (fd == -1)
     {
@@ -159,7 +135,29 @@ int initialize_tables()
         return 0;
     }
 
-    global_tables = mmap(0, MEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    sem_count = sem_open(SEM_COUNT_NAME, O_RDWR | O_CREAT, S_IRWXU, 1);
+
+    if (sem_count == SEM_FAILED)
+    {
+        perror(ERROR_OPEN_SEMAPHORE);
+        return 0;
+    }
+
+    // signal that a new process has been created
+    sem_post(sem_count);
+
+    // attach current semaphore
+    sem_proc = sem_open(SEM_COUNT_NAME, O_RDWR | O_CREAT, S_IRWXU, 1);
+
+    if (sem_proc == SEM_FAILED)
+    {
+        perror(ERROR_OPEN_SEMAPHORE);
+        return 0;
+    }
+
+    sem_wait(sem_proc);
+
+    global_tables = mmap(0, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     if (global_tables == MAP_FAILED)
     {
@@ -167,7 +165,7 @@ int initialize_tables()
         return 0;
     }
 
-    if (ftruncate(fd, MEM_SIZE) == -1)
+    if (ftruncate(fd, MEMORY_SIZE) == -1)
     {
         perror(ERROR_FTRUNCANTE);
         return 0;
@@ -178,6 +176,8 @@ int initialize_tables()
         perror(ERROR_CLOSE);
         return 0;
     }
+
+    sem_post(sem_proc);
 
     return 1;
 }
