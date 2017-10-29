@@ -5,8 +5,11 @@
 #define DEBUG // toggle debug statements
 
 Tables *global_tables;
-sem_t *sem_resource_access; // access semaphore
-sem_t *sem_read_count;      // semaphore for the read count
+sem_t *sem_resource_access;  // access semaphore
+sem_t *sem_read_count;       // semaphore for the read count
+int critical_section_writer; // checks if current process is currently ahold of the critical section
+                             // we use this to handle interruptions
+int critical_section_reader;
 
 #ifdef DEBUG
 #define D
@@ -25,7 +28,7 @@ int main(void)
 {
     char *args[20];
 
-    if (signal(SIGINT, signal_handler))
+    if (signal(SIGINT, signal_handler) == SIG_ERR)
     {
         perror(ERROR_SIGNAL_BINDING);
         return EXIT_FAILURE;
@@ -35,6 +38,10 @@ int main(void)
     if (!initialize_tables())
     {
         perror(ERROR_SHARE_MEMORY);
+
+        sem_close_wrapper(&sem_read_count);
+        sem_close_wrapper(&sem_resource_access);
+
         return EXIT_FAILURE;
     }
 
@@ -245,17 +252,26 @@ int sem_unlink_wrapper(char *semaphore)
     return 1;
 }
 
+int sem_close_wrapper(sem_t **semaphore)
+{
+    if (sem_close(*semaphore) == -1)
+    {
+        perror(ERROR_CLOSE_SEM);
+        return 0;
+    }
+
+    D printf(SEMAPHORE_CLOSED);
+
+    return 1;
+}
+
 void end_program()
 {
     // TODO: Test safety of this
 
     D printf(TERMINATE_ATTEMPT);
 
-    if (sem_close(sem_read_count) == -1)
-    {
-        perror(ERROR_CLOSE_SEM);
-    }
-
+    // TODO: Avoid deadlock caused by writing to shared memory
     writer(LAMBDA(int _() {
         global_tables->sem_count = global_tables->sem_count - 2;
         // odds are the next call is never gonna fail
@@ -265,10 +281,8 @@ void end_program()
         return 1;
     }));
 
-    if (sem_close(sem_resource_access) == -1)
-    {
-        perror(ERROR_CLOSE_SEM);
-    }
+    sem_close_wrapper(&sem_read_count);
+    sem_close_wrapper(&sem_resource_access);
 
     if (global_tables->sem_count <= 0)
     {
@@ -276,6 +290,8 @@ void end_program()
         sem_unlink_wrapper(SEM_READ_COUNT_NAME);
         sem_unlink_wrapper(SEM_RESOURCE_NAME);
     }
+
+    munmap(global_tables, MEMORY_SIZE);
 
     D printf(TERMINATE_SUCCESS);
 }
@@ -286,7 +302,6 @@ void end_program()
 
 int reader(int (*read_operation)())
 {
-
     int ret_value = 1; // specify this value so that we don't preemtively exit critical section
 
     D printf(READER_FLAG);
@@ -296,6 +311,8 @@ int reader(int (*read_operation)())
         ret_value = 0;
         return ret_value;
     }
+
+    critical_section_reader = 1;
 
     global_tables->reader_sem_count++;
 
@@ -308,6 +325,7 @@ int reader(int (*read_operation)())
         }
     }
 
+    critical_section_reader = 0;
     if (sem_post_wrapper(&sem_read_count) == 0)
     {
         ret_value = 0;
@@ -326,6 +344,7 @@ int reader(int (*read_operation)())
         ret_value = 0;
         return ret_value;
     }
+    critical_section_reader = 1;
 
     global_tables->reader_sem_count--;
 
@@ -338,6 +357,7 @@ int reader(int (*read_operation)())
         }
     }
 
+    critical_section_reader = 0;
     if (sem_post_wrapper(&sem_read_count) == 0)
     {
         ret_value = 0;
@@ -358,6 +378,7 @@ int writer(int (*write_operation)())
         ret_value = 0;
         return ret_value;
     }
+    critical_section_writer = 1;
 
     // critical write operation
     if (write_operation() == 0)
@@ -367,6 +388,7 @@ int writer(int (*write_operation)())
 
     D sleep(5);
 
+    critical_section_writer = 0;
     if (sem_post_wrapper(&sem_resource_access) == 0)
     {
         ret_value = 0;
@@ -445,6 +467,27 @@ unsigned long hash(unsigned char *str)
 
 void signal_handler(int sig)
 {
+
+    D printf(SIGNAL_CAPTURED);
+
+    if (critical_section_writer)
+    {
+        // to prevent deadlock, we need to release the current process from critical section
+        sem_post_wrapper(&sem_resource_access);
+    }
+
+    if (critical_section_reader)
+    {
+        // to prevent race conditions, we release the current process from reader's section
+        sem_post_wrapper(&sem_read_count);
+
+        // we decrement the number of readers since we interrupted before it was decremented
+        writer(LAMBDA(int _() {
+            global_tables->reader_sem_count--;
+            return 1;
+        }));
+    }
+
     end_program();
     exit(EXIT_SUCCESS);
 }
