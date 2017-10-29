@@ -25,6 +25,12 @@ int main(void)
 {
     char *args[20];
 
+    if (signal(SIGINT, signal_handler))
+    {
+        perror(ERROR_SIGNAL_BINDING);
+        return EXIT_FAILURE;
+    }
+
     // TODO: Setup signal handler to unlink shared memory and decrement semaphores whatnot
     if (!initialize_tables())
     {
@@ -254,7 +260,8 @@ void end_program()
         global_tables->sem_count = global_tables->sem_count - 2;
         // odds are the next call is never gonna fail
         // so we can decrement the count by 2, because otherwise if we close the resource access semaphore then I don't
-        // know how we could safely write to it
+        // know how we could safely write to it other than creating another shared memory object for the semaphore count and adding a specific
+        // semaphore just to handle this very unlikely edge case
         return 1;
     }));
 
@@ -433,3 +440,11 @@ unsigned long hash(unsigned char *str)
 }
 
 #pragma endregion
+
+#pragma SIGNAL HANDLER REGION
+
+void signal_handler(int sig)
+{
+    end_program();
+    exit(EXIT_SUCCESS);
+}

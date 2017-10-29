@@ -48,6 +48,7 @@ int MEMORY_SIZE = 20 * sizeof(Tables);
 #define ERROR_SHARE_MEMORY "Could not initialize shared memory. Exiting...\n"
 #define ERROR_READING "Could not perform read operation.\n"
 #define ERROR_CLOSE_SEM "Could not close active semaphore.\n"
+#define ERROR_SIGNAL_BINDING "Could not bind signal. Exiting...\n"
 
 // #5 DEBUG STATEMENTS
 #define DEBUG_PREFIX "DEBUG: "
@@ -77,6 +78,7 @@ int sem_unlink_wrapper(char *semaphore);
 int reader(int (*read_operation)());
 int writer(int (*write_operation)());
 void end_program();
+void signal_handler(int sig);
 
 // #7 MISC
 #define LEN(arr) ((int)(sizeof(arr) / sizeof(arr)[0]))
