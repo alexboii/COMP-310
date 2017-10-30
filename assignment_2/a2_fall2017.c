@@ -23,6 +23,7 @@ int critical_section_reader;
 // 1) Does it have to handle cases where critical section never let go?
 
 // TODO: Maybe add function to unlink all semaphores if timeout?
+// TODO: Read writer-reader's problem 2.5.2
 
 int main(void)
 {
@@ -50,6 +51,8 @@ int main(void)
     while (1)
     {
         int cnt = getcmd("\n>> ", args);
+        // D printf("table_no_og = %s\nnew_table = %i\n", args[0], table_no_to_index(args[0], args[1]));
+
         if (execute_command(args, cnt) == 0)
         {
             break;
@@ -89,7 +92,10 @@ int execute_command(char *args[], int args_length)
     {
     case RESERVE_HASH:
         // TODO: Create validate reservation command
-        writer(LAMBDA(int _() { return make_reservation(args[1], args[2]); }));
+        if (validate_reservation_format(args[1], args[2], args[3]))
+        {
+            writer(LAMBDA(int _() { return make_reservation(args[1], args[2]); }));
+        }
         break;
     case STATUS_HASH:
         reader(LAMBDA(int _() { return read_all(); }));
@@ -171,7 +177,6 @@ int make_reservation(char *table_no, char *name)
     // TODO: Add error checking for table > table size
     int i = atoi(table_no);
     strcpy(global_tables->reservations[i], name);
-    // memcpy(global_tables, global_tables, sizeof(global_tables));
 
     return 1;
 }
@@ -315,6 +320,7 @@ int reader(int (*read_operation)())
     critical_section_reader = 1;
 
     global_tables->reader_sem_count++;
+    D printf("DEBUG: READERS COUNT BEFORE= %i\n", global_tables->reader_sem_count);
 
     if (global_tables->reader_sem_count == 1)
     {
@@ -347,6 +353,8 @@ int reader(int (*read_operation)())
     critical_section_reader = 1;
 
     global_tables->reader_sem_count--;
+
+    D printf("DEBUG: READERS COUNT AFTER = %i\n", global_tables->reader_sem_count);
 
     if (global_tables->reader_sem_count == 0)
     {
@@ -400,6 +408,43 @@ int writer(int (*write_operation)())
 #pragma endregion
 
 #pragma region UTILITY FUNCTIONS REGION
+
+int table_no_to_index(char *table, char *section)
+{
+    int table_int = atoi(table);
+    int section_int = atoi(section);
+    int index = table_int % 10;
+
+    return (section_int == 2) ? 10 + index : index;
+}
+
+int validate_reservation_format(char *name, char *section, char *table)
+{
+    if (strlen(name) > MAX_TABLE_SIZE)
+    {
+        perror(ERROR_MAX_NAME_LIMIT);
+        return 0;
+    }
+
+    int section_no = atoi(section);
+
+    if (section == NULL || (section_no != 1 && section_no != 2))
+    {
+        perror(ERROR_SECTION_NUMBER);
+        return 0;
+    }
+
+    int table_no = atoi(table);
+
+    if (table != NULL & !(100 <= table_no <= 109 || 200 <= table_no <= 209))
+    {
+        perror(ERROR_TABLE_NUMBER);
+        return 0;
+    }
+
+    return 1;
+}
+
 /** 
  * @brief Function provided by Prof. Harmouche
  * @note   

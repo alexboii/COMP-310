@@ -12,14 +12,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-// SHARED MEMORY STRUCT FOR HOLDING TABLES
-typedef struct
-{
-    char reservations[20][30];
-    int sem_count;
-    int reader_sem_count;
-} Tables;
-
 // #1 HASH CONSTANTS FOR COMMANDS
 #define EXIT_HASH 6385204799
 #define INIT_HASH 6385337657
@@ -27,9 +19,8 @@ typedef struct
 #define STATUS_HASH 6954030894409
 
 // #2 LIMIT CONSTANTS
-#define MAX_RESERVATION_NAME 2500
+#define MAX_RESERVATION_NAME 50
 #define MAX_TABLE_SIZE 20
-int MEMORY_SIZE = 20 * sizeof(Tables);
 
 // #3 NAME CONSTANTS
 #define MEMORY_NAME "/abraty"
@@ -49,6 +40,9 @@ int MEMORY_SIZE = 20 * sizeof(Tables);
 #define ERROR_SIGNAL_BINDING "Could not bind signal. Exiting...\n"
 #define ERROR_SMH_OPEN "Could not perform smh_open.\n"
 #define ERROR_WRONG_COMMAND "You have entered an invalid command. Supported commands: \n"
+#define ERROR_MAX_NAME_LIMIT "Reservee's name is too long.\n"
+#define ERROR_SECTION_NUMBER "Invalid section number.\n"
+#define ERROR_TABLE_NUMBER "Invalid table number.\n"
 
 // #5 DEBUG STATEMENTS
 #define CALLBACK DEBUG_PREFIX "Executing callback...\n"
@@ -79,10 +73,22 @@ int sem_post_wrapper(sem_t **semaphore);
 int sem_unlink_wrapper(char *semaphore);
 int sem_wait_wrapper(sem_t **semaphore);
 int writer(int (*write_operation)());
+int validate_reservation_format(char *name, char *section, char *table);
 unsigned long hash(unsigned char *str);
 void end_program();
 void signal_handler(int sig);
+int table_no_to_index(char *table, char *section);
 
 // #7 MISC
 #define LAMBDA(c_) ({ c_ _; })
 #define LEN(arr) ((int)(sizeof(arr) / sizeof(arr)[0]))
+
+// SHARED MEMORY STRUCT FOR HOLDING TABLES
+typedef struct
+{
+    char reservations[MAX_RESERVATION_NAME][MAX_TABLE_SIZE];
+    int sem_count;
+    int reader_sem_count;
+} Tables;
+
+int MEMORY_SIZE = 20 * sizeof(Tables);
