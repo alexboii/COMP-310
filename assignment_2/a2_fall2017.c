@@ -94,8 +94,11 @@ int execute_command(char *args[], int args_length)
         // TODO: Create validate reservation command
         if (validate_reservation_format(args[1], args[2], args[3]))
         {
-            writer(LAMBDA(int _() { return make_reservation(args[1], args[2]); }));
+            writer(LAMBDA(int _() { return make_reservation(args[1], args[2], args[3]); }));
         }
+        break;
+    case INIT_HASH:
+        writer(LAMBDA(int _() { return wipe(); }));
         break;
     case STATUS_HASH:
         reader(LAMBDA(int _() { return read_all(); }));
@@ -149,7 +152,7 @@ int initialize_tables()
                 return 0;
             }
 
-            if (ftruncate(fd, MEMORY_SIZE) == -1)
+            if (ftruncate(fd, sizeof(Tables)) == -1)
             {
                 perror(ERROR_FTRUNCANTE);
                 return 0;
@@ -172,25 +175,63 @@ int initialize_tables()
     return 1;
 }
 
-int make_reservation(char *table_no, char *name)
+int make_reservation(char *name, char *section, char *table)
 {
-    // TODO: Add error checking for table > table size
-    int i = atoi(table_no);
-    strcpy(global_tables->reservations[i], name);
+    int i = table_no_to_index(table, section);
 
+    // TODO: Add error checking for table > table size
+    if (table != NULL)
+    {
+        if (strlen(global_tables->reservations[i]) != 0)
+        {
+            printf(ERROR_TABLE_NOT_AVAILABLE);
+        }
+        strcpy(global_tables->reservations[i], name);
+
+        return 1;
+    }
+
+    int new_index;
+
+    if ((new_index = first_available_from(i)) == -1)
+    {
+        printf(ERROR_TABLES_NOT_AVAILABLE);
+        return 0;
+    }
+
+    strcpy(global_tables->reservations[new_index], name);
+
+    return 1;
+}
+
+int first_available_from(int table_offset)
+{
+    for (int i = 0; i < MAX_TABLE_SIZE; i++)
+    {
+        int index = (i + table_offset) % MAX_TABLE_SIZE;
+
+        if (strlen(global_tables->reservations[index]) == 0)
+        {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+int wipe()
+{
+    memset(global_tables->reservations, 0, sizeof(global_tables->reservations));
     return 1;
 }
 
 int read_all()
 {
-    for (int i = 0; i < LEN(global_tables->reservations); i++)
+    for (int i = 0; i < MAX_TABLE_SIZE; i++)
     {
-        int len = strlen(global_tables->reservations[i]);
+        int offset = (i < 10) ? 100 : 200;
 
-        if (len != 0)
-        {
-            printf("TABLE %d RESERVED FOR USER %s\n", i, global_tables->reservations[i]);
-        }
+        printf("TABLE %d : %s\n", offset + (i % 10), (strlen(global_tables->reservations[i]) == 0) ? FREE_SPOT : global_tables->reservations[i]);
     }
 
     D printf("DEBUG: SEMAPHORE COUNT: %i\n", global_tables->sem_count);
@@ -320,7 +361,7 @@ int reader(int (*read_operation)())
     critical_section_reader = 1;
 
     global_tables->reader_sem_count++;
-    D printf("DEBUG: READERS COUNT BEFORE= %i\n", global_tables->reader_sem_count);
+    D printf("DEBUG: READERS COUNT BEFORE = %i\n", global_tables->reader_sem_count);
 
     if (global_tables->reader_sem_count == 1)
     {
@@ -411,7 +452,11 @@ int writer(int (*write_operation)())
 
 int table_no_to_index(char *table, char *section)
 {
-    int table_int = atoi(table);
+    int table_int = 0;
+    if (table != NULL)
+    {
+        table_int = atoi(table);
+    }
     int section_int = atoi(section);
     int index = table_int % 10;
 
@@ -422,7 +467,7 @@ int validate_reservation_format(char *name, char *section, char *table)
 {
     if (strlen(name) > MAX_TABLE_SIZE)
     {
-        perror(ERROR_MAX_NAME_LIMIT);
+        printf(ERROR_MAX_NAME_LIMIT);
         return 0;
     }
 
@@ -430,15 +475,15 @@ int validate_reservation_format(char *name, char *section, char *table)
 
     if (!validate_section(section, section_no))
     {
-        perror(ERROR_SECTION_NUMBER);
+        printf(ERROR_SECTION_NUMBER);
         return 0;
     }
 
     int table_no = atoi(table);
 
-    if (table != NULL & !validate_table_number(table, table_no))
+    if (table != NULL & !validate_table_number(section_no, table_no))
     {
-        perror(ERROR_TABLE_NUMBER);
+        printf(ERROR_TABLE_NUMBER);
         return 0;
     }
 
@@ -450,9 +495,9 @@ int validate_section(char *section, int section_no)
     return section != NULL && (section_no == 1 || section_no == 2);
 }
 
-int validate_table_number(char *table, int table_no)
+int validate_table_number(int section, int table_no)
 {
-    return (SECTION_1_LO <= table_no && table_no <= SECTION_1_UP) || (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP);
+    return (section == 1 && (SECTION_1_LO <= table_no && table_no <= SECTION_1_UP)) || (section == 2 && (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP));
 }
 
 /** 

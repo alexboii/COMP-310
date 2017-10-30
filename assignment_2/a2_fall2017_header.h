@@ -30,6 +30,7 @@
 #define MEMORY_NAME "/abraty"
 #define SEM_READ_COUNT_NAME "/abraty_sem_read"
 #define SEM_RESOURCE_NAME "/abraty_sem_resource"
+#define FREE_SPOT "Unreserved."
 
 // #4 ERROR MESSAGE CONSTANTS
 #define ERROR_CLOSE "Could not close file descriptor.\n"
@@ -47,6 +48,8 @@
 #define ERROR_MAX_NAME_LIMIT "Reservee's name is too long.\n"
 #define ERROR_SECTION_NUMBER "Invalid section number.\n"
 #define ERROR_TABLE_NUMBER "Invalid table number.\n"
+#define ERROR_TABLE_NOT_AVAILABLE "Specified table is not available.\n"
+#define ERROR_TABLES_NOT_AVAILABLE "No tables are currently available.\n"
 
 // #5 DEBUG STATEMENTS
 #define CALLBACK DEBUG_PREFIX "Executing callback...\n"
@@ -69,7 +72,7 @@ int execute_command(char *args[], int args_length);
 int getcmd(char *prompt, char *args[]);
 int initialize_semaphore(char *sem_name, int value, sem_t **semaphore, void (*callback)(sem_t **));
 int initialize_tables();
-int make_reservation(char *table, char *name);
+int make_reservation(char *name, char *section, char *table);
 int read_all();
 int reader(int (*read_operation)());
 int sem_close_wrapper(sem_t **semaphore);
@@ -83,7 +86,9 @@ void end_program();
 void signal_handler(int sig);
 int table_no_to_index(char *table, char *section);
 int validate_section(char *section, int section_no);
-int validate_table_number(char *table, int table_no);
+int validate_table_number(int section, int table_no);
+int first_available_from(int table_offset);
+int wipe();
 
 // #7 MISC
 #define LAMBDA(c_) ({ c_ _; })
