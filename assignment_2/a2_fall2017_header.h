@@ -82,6 +82,8 @@ unsigned long hash(unsigned char *str);
 void end_program();
 void signal_handler(int sig);
 int table_no_to_index(char *table, char *section);
+int validate_section(char *section, int section_no);
+int validate_table_number(char *table, int table_no);
 
 // #7 MISC
 #define LAMBDA(c_) ({ c_ _; })

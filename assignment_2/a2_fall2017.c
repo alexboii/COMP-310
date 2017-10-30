@@ -428,7 +428,7 @@ int validate_reservation_format(char *name, char *section, char *table)
 
     int section_no = atoi(section);
 
-    if (section == NULL || (section_no != 1 && section_no != 2))
+    if (!validate_section(section, section_no))
     {
         perror(ERROR_SECTION_NUMBER);
         return 0;
@@ -436,13 +436,23 @@ int validate_reservation_format(char *name, char *section, char *table)
 
     int table_no = atoi(table);
 
-    if (table != NULL & !((SECTION_1_LO <= table_no && table_no <= SECTION_1_UP) || (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP)))
+    if (table != NULL & !validate_table_number(table, table_no))
     {
         perror(ERROR_TABLE_NUMBER);
         return 0;
     }
 
     return 1;
+}
+
+int validate_section(char *section, int section_no)
+{
+    return section != NULL && (section_no == 1 || section_no == 2);
+}
+
+int validate_table_number(char *table, int table_no)
+{
+    return (SECTION_1_LO <= table_no && table_no <= SECTION_1_UP) || (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP);
 }
 
 /** 
