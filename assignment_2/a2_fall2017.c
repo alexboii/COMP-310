@@ -29,7 +29,7 @@ int main(void)
 {
     char *args[20];
 
-    if (signal(SIGINT, signal_handler) == SIG_ERR)
+    if (signal(SIGINT, signal_handler) == SIG_ERR || signal(SIGTSTP, SIG_IGN) == SIG_ERR)
     {
         perror(ERROR_SIGNAL_BINDING);
         return EXIT_FAILURE;
@@ -436,7 +436,7 @@ int validate_reservation_format(char *name, char *section, char *table)
 
     int table_no = atoi(table);
 
-    if (table != NULL & !(100 <= table_no <= 109 || 200 <= table_no <= 209))
+    if (table != NULL & !((SECTION_1_LO <= table_no && table_no <= SECTION_1_UP) || (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP)))
     {
         perror(ERROR_TABLE_NUMBER);
         return 0;
