@@ -97,7 +97,7 @@ int wipe();
 // SHARED MEMORY STRUCT FOR HOLDING TABLES
 typedef struct
 {
-    char reservations[MAX_RESERVATION_NAME][MAX_TABLE_SIZE];
+    char reservations[MAX_TABLE_SIZE][MAX_RESERVATION_NAME];
     int sem_count;
     int reader_sem_count;
 } Tables;
