@@ -21,6 +21,9 @@
 // #2 LIMIT CONSTANTS
 #define MAX_RESERVATION_NAME 50
 #define MAX_TABLE_SIZE 20
+#define LINE_SIZE 100
+#define MAX_ARGS 4
+#define MAX_ARG_SIZE 20
 #define SECTION_1_LO 100
 #define SECTION_1_UP 109
 #define SECTION_2_LO 200
@@ -44,12 +47,13 @@
 #define ERROR_SHARE_MEMORY "Could not initialize shared memory. Exiting...\n"
 #define ERROR_SIGNAL_BINDING "Could not bind signal. Exiting...\n"
 #define ERROR_SMH_OPEN "Could not perform smh_open.\n"
-#define ERROR_WRONG_COMMAND "You have entered an invalid command. Supported commands: \n"
+#define ERROR_WRONG_COMMAND "You have entered an invalid command. Supported commands: reserve, init, status, exit. \n"
 #define ERROR_MAX_NAME_LIMIT "Reservee's name is too long.\n"
 #define ERROR_SECTION_NUMBER "Invalid section number.\n"
 #define ERROR_TABLE_NUMBER "Invalid table number.\n"
 #define ERROR_TABLE_NOT_AVAILABLE "Specified table is not available.\n"
 #define ERROR_TABLES_NOT_AVAILABLE "No tables are currently available.\n"
+#define ERROR_WRONG_FILE "Could not open the specified file. Does it exist?\n"
 
 // #5 DEBUG STATEMENTS
 #define CALLBACK DEBUG_PREFIX "Executing callback...\n"
@@ -68,8 +72,8 @@
 #define SIGNAL_CAPTURED DEBUG_PREFIX "SIGINT has been captured.\n"
 
 // #6 FUNCTION PROTOTYPES
-int execute_command(char *args[], int args_length);
-int getcmd(char *prompt, char *args[]);
+int execute_command(char args[MAX_ARGS][MAX_ARG_SIZE], int args_length);
+int getcmd(char line[LINE_SIZE], char args[MAX_ARGS][MAX_ARG_SIZE]);
 int initialize_semaphore(char *sem_name, int value, sem_t **semaphore, void (*callback)(sem_t **));
 int initialize_tables();
 int make_reservation(char *name, char *section, char *table);
