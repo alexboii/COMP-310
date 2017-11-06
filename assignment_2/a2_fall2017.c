@@ -24,10 +24,18 @@ int critical_section_reader;
 
 // TODO: Maybe add function to unlink all semaphores if timeout?
 // TODO: Read writer-reader's problem 2.5.2
+// TODO: Comment code
+// TODO: Test
+// TODO: Test without debug
+// TODO: Test two files at the same time
+// TODO: Create edge case files
+// TODO: Remove all crappy code
 
-int main(void)
+int main(int argc, char *argv[])
 {
-    char *args[20];
+    char args[MAX_ARGS][MAX_ARG_SIZE];
+    char line[LINE_SIZE];
+    int cnt;
 
     if (signal(SIGINT, signal_handler) == SIG_ERR || signal(SIGTSTP, SIG_IGN) == SIG_ERR)
     {
@@ -48,9 +56,42 @@ int main(void)
 
     D printf(CREATION_OR_READ_SUCCESS);
 
-    while (1)
+    if (argc == 2)
     {
-        int cnt = getcmd("\n>> ", args);
+        FILE *fp;
+
+        if ((fp = fopen(argv[1], "r")) == NULL)
+        {
+            perror(ERROR_WRONG_FILE);
+        }
+
+        while (fgets(line, LINE_SIZE, fp) != NULL)
+        {
+            cnt = getcmd(line, args);
+
+            if (cnt == 0)
+            {
+                continue;
+            }
+
+            if (execute_command(args, cnt) == 0)
+            {
+                break;
+            }
+
+            memset(line, 0, sizeof(line));
+            memset(args, 0, sizeof(args));
+        }
+
+        fclose(fp);
+    }
+
+    while (1 && argc == 1)
+    {
+        printf(">");
+        fgets(line, LINE_SIZE, stdin);
+        cnt = getcmd(line, args);
+
         // D printf("table_no_og = %s\nnew_table = %i\n", args[0], table_no_to_index(args[0], args[1]));
 
         if (execute_command(args, cnt) == 0)
@@ -71,7 +112,7 @@ int main(void)
  * @param  args_length: 
  * @retval 
  */
-int execute_command(char *args[], int args_length)
+int execute_command(char args[MAX_ARGS][MAX_ARG_SIZE], int args_length)
 {
     unsigned long argument = hash(args[0]);
 
@@ -84,7 +125,7 @@ int execute_command(char *args[], int args_length)
 
     if (argument != RESERVE_HASH && argument != STATUS_HASH && argument != INIT_HASH)
     {
-        perror(ERROR_WRONG_COMMAND);
+        printf(ERROR_WRONG_COMMAND);
         return -1;
     }
 
@@ -384,6 +425,7 @@ int reader(int (*read_operation)())
         ret_value = 0;
     }
 
+    // TODO: Change this to the random sleep
     D sleep(5);
 
     if (sem_wait_wrapper(&sem_read_count) == 0)
@@ -465,6 +507,8 @@ int table_no_to_index(char *table, char *section)
 
 int validate_reservation_format(char *name, char *section, char *table)
 {
+
+    // TODO: Change != NULL validations to strlen()
     if (strlen(name) > MAX_TABLE_SIZE)
     {
         printf(ERROR_MAX_NAME_LIMIT);
@@ -508,40 +552,21 @@ int validate_table_number(int section, int table_no)
  * @param  *background: 
  * @retval Number of arguments
   */
-int getcmd(char *prompt, char *args[])
+int getcmd(char line[LINE_SIZE], char args[MAX_ARGS][MAX_ARG_SIZE])
 {
-    int length, i = 0;
-    char *token, *loc;
-    char *line = NULL;
-    size_t linecap = 0;
+    int count = 0;
+    char *token;
+    char *delimiters = " \t\n\r\v";
 
-    printf("%s", prompt);
-    length = getline(&line, &linecap, stdin);
-
-    if (length <= 0)
+    // split line buffer into separate arguments in array of strings
+    token = strtok(line, delimiters);
+    while (token != NULL && count < MAX_ARGS)
     {
-        exit(-1);
+        strncpy(args[count++], token, strlen(token) + 1);
+        token = strtok(NULL, delimiters);
     }
 
-    while ((token = strsep(&line, " \t\n")) != NULL)
-    {
-        for (int j = 0; j < strlen(token); j++)
-        {
-            if (token[j] <= 32)
-            {
-                token[j] = '\0';
-            }
-        }
-        if (strlen(token) > 0)
-        {
-            args[i++] = token;
-        }
-    }
-
-    free(token);
-    free(line);
-
-    return i;
+    return count;
 }
 
 /** 
