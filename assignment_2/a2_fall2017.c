@@ -25,7 +25,7 @@ int critical_section_reader;
 // TODO: Maybe add function to unlink all semaphores if timeout?
 // TODO: Read writer-reader's problem 2.5.2
 
-int main(void)
+int main(int argc, char *argv[])
 {
     char *args[20];
 
@@ -51,7 +51,6 @@ int main(void)
     while (1)
     {
         int cnt = getcmd("\n>> ", args);
-        // D printf("table_no_og = %s\nnew_table = %i\n", args[0], table_no_to_index(args[0], args[1]));
 
         if (execute_command(args, cnt) == 0)
         {
