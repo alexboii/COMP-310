@@ -5,6 +5,7 @@ reserve
 reserve boii 
 reserve boii A 300
 reserve boii2 A 
+wrongcommand yeah
 status
 status
 reserve boii B 102

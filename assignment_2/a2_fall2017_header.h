@@ -19,40 +19,40 @@
 #define STATUS_HASH 6954030894409
 
 // #2 LIMIT CONSTANTS
-#define MAX_RESERVATION_NAME 50
-#define MAX_TABLE_SIZE 20
 #define LINE_SIZE 100
 #define MAX_ARGS 4
 #define MAX_ARG_SIZE 20
+#define MAX_RESERVATION_NAME 50
+#define MAX_TABLE_SIZE 20
 #define SECTION_1_LO 100
 #define SECTION_1_UP 109
 #define SECTION_2_LO 200
 #define SECTION_2_UP 209
 
 // #3 NAME CONSTANTS
+#define FREE_SPOT "Unreserved."
 #define MEMORY_NAME "/abraty"
 #define SEM_READ_COUNT_NAME "/abraty_sem_read"
 #define SEM_RESOURCE_NAME "/abraty_sem_resource"
-#define FREE_SPOT "Unreserved."
 
 // #4 ERROR MESSAGE CONSTANTS
 #define ERROR_CLOSE "Could not close file descriptor.\n"
 #define ERROR_CLOSE_SEM "Could not close active semaphore.\n"
 #define ERROR_FTRUNCANTE "Could not perform ftruncate.\n"
+#define ERROR_MAX_NAME_LIMIT "Reservee's name is too long.\n"
 #define ERROR_MMAP "Could not perform mmap.\n"
 #define ERROR_OPEN_SEMAPHORE "Could not open semaphore.\n"
 #define ERROR_READING "Could not perform read operation.\n"
+#define ERROR_SECTION_NUMBER "Invalid section number.\n"
 #define ERROR_SEM_SIGNAL "Could not send signal from semaphore.\n"
 #define ERROR_SEM_WAIT "Could not enter critical section.\n"
 #define ERROR_SHARE_MEMORY "Could not initialize shared memory. Exiting...\n"
 #define ERROR_SIGNAL_BINDING "Could not bind signal. Exiting...\n"
 #define ERROR_SMH_OPEN "Could not perform smh_open.\n"
-#define ERROR_WRONG_COMMAND "You have entered an invalid command. Supported commands: reserve, init, status, exit. \n"
-#define ERROR_MAX_NAME_LIMIT "Reservee's name is too long.\n"
-#define ERROR_SECTION_NUMBER "Invalid section number.\n"
-#define ERROR_TABLE_NUMBER "Invalid table number.\n"
-#define ERROR_TABLE_NOT_AVAILABLE "Specified table is not available.\n"
 #define ERROR_TABLES_NOT_AVAILABLE "No tables are currently available.\n"
+#define ERROR_TABLE_NOT_AVAILABLE "Specified table is not available.\n"
+#define ERROR_TABLE_NUMBER "Invalid table number.\n"
+#define ERROR_WRONG_COMMAND "You have entered an invalid command. Supported commands: reserve, init, status, exit. \n"
 #define ERROR_WRONG_FILE "Could not open the specified file"
 
 // #5 DEBUG STATEMENTS
@@ -66,13 +66,15 @@
 #define OPENING_EXISTING_MEMORY DEBUG_PREFIX "Memory already created, allocating in O_RWRD mode...\n"
 #define READER_FLAG DEBUG_PREFIX "Reader.\n"
 #define SEMAPHORE_CLOSED DEBUG_PREFIX "Semaphore closed.\n"
+#define SIGNAL_CAPTURED DEBUG_PREFIX "SIGINT has been captured.\n"
 #define TERMINATE_ATTEMPT DEBUG_PREFIX "Attempting termination...\n"
 #define TERMINATE_SUCCESS DEBUG_PREFIX "Succesfully terminating...\n"
 #define WRITER_FLAG DEBUG_PREFIX "Writer.\n"
-#define SIGNAL_CAPTURED DEBUG_PREFIX "SIGINT has been captured.\n"
 
 // #6 FUNCTION PROTOTYPES
 int execute_command(char args[MAX_ARGS][MAX_ARG_SIZE], int args_length);
+int first_available_from(int table_offset);
+int get_section_no(char *section);
 int getcmd(char line[LINE_SIZE], char args[MAX_ARGS][MAX_ARG_SIZE]);
 int initialize_semaphore(char *sem_name, int value, sem_t **semaphore, void (*callback)(sem_t **));
 int initialize_tables();
@@ -83,17 +85,15 @@ int sem_close_wrapper(sem_t **semaphore);
 int sem_post_wrapper(sem_t **semaphore);
 int sem_unlink_wrapper(char *semaphore);
 int sem_wait_wrapper(sem_t **semaphore);
-int writer(int (*write_operation)());
+int table_no_to_index(char *table, char *section);
 int validate_reservation_format(char *name, char *section, char *table);
+int validate_section(char *section, int section_no);
+int validate_table_number(int section, int table_no);
+int wipe();
+int writer(int (*write_operation)());
 unsigned long hash(unsigned char *str);
 void end_program();
 void signal_handler(int sig);
-int table_no_to_index(char *table, char *section);
-int validate_section(char *section, int section_no);
-int validate_table_number(int section, int table_no);
-int first_available_from(int table_offset);
-int wipe();
-int get_section_no(char *section);
 
 // #7 MISC
 #define LAMBDA(c_) ({ c_ _; })

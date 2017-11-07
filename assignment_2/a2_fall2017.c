@@ -2,7 +2,7 @@
 
 #pragma region GLOBAL VARIABLES
 
-#define DEBUG // toggle debug statements
+// #define DEBUG // toggle debug statements
 
 Tables *global_tables;
 sem_t *sem_resource_access;  // access semaphore
@@ -19,35 +19,31 @@ int critical_section_reader;
 
 #pragma endregion
 
-// QUESTIONS
-// 1) Does it have to handle cases where critical section never let go?
-
-// TODO: Maybe add function to unlink all semaphores if timeout?
-// TODO: Read writer-reader's problem 2.5.2
-// TODO: Comment code
-// TODO: Test
-// TODO: Test without debug
-// TODO: Test two files at the same time
-// TODO: Create edge case files
-// TODO: Remove all crappy code
-
+/** 
+ * @brief  Alexander Bratyshkin - 260684228
+ * @note   Assignment 2 - Reservation System
+ *         If you want to see debug statements to ensure that everything works correctly, please uncomment line 5
+ * @retval Hopefully 100% :) 
+ */
 int main(int argc, char *argv[])
 {
     char args[MAX_ARGS][MAX_ARG_SIZE];
     char line[LINE_SIZE];
     int cnt;
 
+    // setup singal handlers to handle interruptions
     if (signal(SIGINT, signal_handler) == SIG_ERR || signal(SIGTSTP, SIG_IGN) == SIG_ERR)
     {
         perror(ERROR_SIGNAL_BINDING);
         return EXIT_FAILURE;
     }
 
-    // TODO: Setup signal handler to unlink shared memory and decrement semaphores whatnot
+    // initialize shared memory & semaphores
     if (!initialize_tables())
     {
         perror(ERROR_SHARE_MEMORY);
 
+        // if unsuccesful, close semaphores
         sem_close_wrapper(&sem_read_count);
         sem_close_wrapper(&sem_resource_access);
 
@@ -60,6 +56,7 @@ int main(int argc, char *argv[])
 
     D printf(CREATION_OR_READ_SUCCESS);
 
+    // if file has been provided
     if (argc == 2)
     {
         FILE *fp;
@@ -70,20 +67,17 @@ int main(int argc, char *argv[])
         }
         else
         {
+            // read file line by lined, execute command
             while (fgets(line, LINE_SIZE, fp) != NULL)
             {
                 cnt = getcmd(line, args);
-
-                if (cnt == 0)
-                {
-                    continue;
-                }
 
                 if (execute_command(args, cnt) == 0)
                 {
                     break;
                 }
 
+                // reset line and args
                 memset(line, 0, sizeof(line));
                 memset(args, 0, sizeof(args));
             }
@@ -92,31 +86,35 @@ int main(int argc, char *argv[])
         }
     }
 
+    // if no file has been provided, we run the shell in interactive mode
     while (1 && argc == 1)
     {
         printf(SHELL_TICKER);
         fgets(line, LINE_SIZE, stdin);
         cnt = getcmd(line, args);
 
-        // D printf("table_no_og = %s\nnew_table = %i\n", args[0], table_no_to_index(args[0], args[1]));
-
         if (execute_command(args, cnt) == 0)
         {
             break;
         }
+
+        // reset line and args
+        memset(line, 0, sizeof(line));
+        memset(args, 0, sizeof(args));
     }
 
+    // exit if no more commands are left to process, or user has entered "exit" command
     end_program();
     return EXIT_SUCCESS;
 }
 
 #pragma region PROGRAM FLOW CONTROL REGION
-/**  
- * @brief  Execute user's command
+/** 
+ * @brief   Execute user's command by redirecting the input to its appropriate method
  * @note   
- * @param  *args[]: 
- * @param  args_length: 
- * @retval 
+ * @param  args[MAX_ARGS][MAX_ARG_SIZE]: List of arguments
+ * @param  args_length: Length of arguments
+ * @retval 0 if exit, -1 if error, 1 if success 
  */
 int execute_command(char args[MAX_ARGS][MAX_ARG_SIZE], int args_length)
 {
@@ -138,7 +136,6 @@ int execute_command(char args[MAX_ARGS][MAX_ARG_SIZE], int args_length)
     switch (argument)
     {
     case RESERVE_HASH:
-        // TODO: Create validate reservation command
         if (validate_reservation_format(args[1], args[2], args[3]))
         {
             writer(LAMBDA(int _() { return make_reservation(args[1], args[2], args[3]); }));
@@ -159,13 +156,15 @@ int execute_command(char args[MAX_ARGS][MAX_ARG_SIZE], int args_length)
 #pragma endregion
 
 #pragma region SHARED MEMORY MANIPULATION REGION
+
 /** 
- * @brief  
+ * @brief  Initialize shared memory & attach semaphores to current process
  * @note   
  * @retval 
  */
 int initialize_tables()
 {
+    // create if doesn't exist, get otherwise
     int fd = shm_open(MEMORY_NAME, O_CREAT | O_RDWR, S_IRWXU);
 
     if (fd == -1)
@@ -186,8 +185,6 @@ int initialize_tables()
 
     // attach reader count semaphore
     initialize_semaphore(SEM_READ_COUNT_NAME, 1, &sem_read_count, NULL);
-
-    // TODO: Add resource control in here, maybe call reader?
 
     if (writer(LAMBDA(int _() {
             // attach memory
@@ -222,16 +219,26 @@ int initialize_tables()
     return 1;
 }
 
+/** 
+ * @brief  Reserve a table for customer
+ * @note   If table wasn't specified, give customer first available table in his section. If section full, give a table in next section.
+ * @param  *name: Customer's name
+ * @param  *section: A or B
+ * @param  *table: Optional, between 100-109 & 200-209
+ * @retval 1 if success, 0 if no tables available or already reserved
+ */
 int make_reservation(char *name, char *section, char *table)
 {
+    // map table number in 3 digits to index in array
     int i = table_no_to_index(table, section);
 
-    // TODO: Add error checking for table > table size
+    // if table size has been specified, simply overwrite
     if (strlen(table) != 0)
     {
         if (strlen(global_tables->reservations[i]) != 0)
         {
             printf(ERROR_TABLE_NOT_AVAILABLE);
+            return 0;
         }
         strcpy(global_tables->reservations[i], name);
 
@@ -240,6 +247,7 @@ int make_reservation(char *name, char *section, char *table)
 
     int new_index;
 
+    // retrieve first available table given section
     if ((new_index = first_available_from(i)) == -1)
     {
         printf(ERROR_TABLES_NOT_AVAILABLE);
@@ -251,6 +259,12 @@ int make_reservation(char *name, char *section, char *table)
     return 1;
 }
 
+/** 
+ * @brief  Function to retrieve first available table in the restaurant
+ * @note   Loops circularly, i.e. first tries to give a table in specified section, if none are available, go to next section
+ * @param  table_offset: Array index from which to start searching for new table
+ * @retval index of first available table, -1 if error
+ */
 int first_available_from(int table_offset)
 {
     for (int i = 0; i < MAX_TABLE_SIZE; i++)
@@ -266,12 +280,22 @@ int first_available_from(int table_offset)
     return -1;
 }
 
+/** 
+ * @brief  Executes the init command (i.e. reinitializes all reservations)
+ * @note   
+ * @retval 1 
+ */
 int wipe()
 {
     memset(global_tables->reservations, 0, sizeof(global_tables->reservations));
     return 1;
 }
 
+/** 
+ * @brief  Print out all tables with their respective reservation status
+ * @note   
+ * @retval 1
+ */
 int read_all()
 {
     for (int i = 0; i < MAX_TABLE_SIZE; i++)
@@ -286,6 +310,15 @@ int read_all()
     return 1;
 }
 
+/** 
+ * @brief  Wrapper method created to open a semaphore
+ * @note   
+ * @param  *sem_name: Name of semaphore
+ * @param  value: Initial value of semaphore
+ * @param  **semaphore: Pointer to global semaphore variable
+ * @param  (*callback: Callback to be execute after completion of semaphore open
+ * @retval 0 if error, 1 if success 
+ */
 int initialize_semaphore(char *sem_name, int value, sem_t **semaphore, void (*callback)(sem_t **))
 {
     *semaphore = sem_open(sem_name, O_RDWR | O_CREAT, S_IRWXU, value);
@@ -302,8 +335,16 @@ int initialize_semaphore(char *sem_name, int value, sem_t **semaphore, void (*ca
 
         callback(semaphore);
     }
+
+    return 1;
 }
 
+/** 
+ * @brief  Wrapper to provide custom error message & debug statements if sem wait fails
+ * @note   
+ * @param  **semaphore: Pointer to semaphore
+ * @retval 1 if success, 0 if error
+ */
 int sem_wait_wrapper(sem_t **semaphore)
 {
     D printf(CS_ATTEMPT);
@@ -319,6 +360,12 @@ int sem_wait_wrapper(sem_t **semaphore)
     return 1;
 }
 
+/** 
+ * @brief  Wrapper to provide custom error message & debug statements if sem signal fails
+ * @note   
+ * @param  **semaphore: Pointer to semaphore
+ * @retval 1 if success, 0 if error
+ */
 int sem_post_wrapper(sem_t **semaphore)
 {
     if (sem_post(*semaphore) == -1)
@@ -332,6 +379,12 @@ int sem_post_wrapper(sem_t **semaphore)
     return 1;
 }
 
+/** 
+ * @brief  Wrapper to provide custom error message & debug statements if sem unlink fails
+ * @note   
+ * @param  **semaphore: Pointer to semaphore
+ * @retval 1 if success, 0 if error
+ */
 int sem_unlink_wrapper(char *semaphore)
 {
     if (sem_unlink(semaphore) == -1)
@@ -345,6 +398,12 @@ int sem_unlink_wrapper(char *semaphore)
     return 1;
 }
 
+/** 
+ * @brief  Wrapper to provide custom error message & debug statements if sem close fails
+ * @note   
+ * @param  **semaphore: Pointer to semaphore
+ * @retval 1 if success, 0 if error
+ */
 int sem_close_wrapper(sem_t **semaphore)
 {
     if (sem_close(*semaphore) == -1)
@@ -358,13 +417,16 @@ int sem_close_wrapper(sem_t **semaphore)
     return 1;
 }
 
+/** 
+ * @brief  Handle program termination by closing semaphores and unlinking them in case this process is the last running instance of the program
+ * @note   
+ * @retval None
+ */
 void end_program()
 {
-    // TODO: Test safety of this
-
     D printf(TERMINATE_ATTEMPT);
 
-    // TODO: Avoid deadlock caused by writing to shared memory
+    // decrement semaphore count
     writer(LAMBDA(int _() {
         global_tables->sem_count = global_tables->sem_count - 2;
         // odds are the next call is never gonna fail
@@ -377,6 +439,8 @@ void end_program()
     sem_close_wrapper(&sem_read_count);
     sem_close_wrapper(&sem_resource_access);
 
+    // hopefully this doesn't create race conditions...
+    // all of this would've been much simpler if the stupid Trottier machines provided support for get_value
     if (global_tables->sem_count <= 0)
     {
         // shm_unlink(MEMORY_NAME); // not sure if we need to persist the memory forever or if we remove it every time
@@ -393,13 +457,18 @@ void end_program()
 
 #pragma region READER AND WRITER FUNCTIONS REGION
 
+/** 
+ * @brief  Reader function of the Readers and Writers problem stated in section 2.5.2
+ * @note   
+ * @retval 1 if success, 0 if error
+ */
 int reader(int (*read_operation)())
 {
     int ret_value = 1; // specify this value so that we don't preemtively exit critical section
 
     D printf(READER_FLAG);
 
-    if (sem_wait_wrapper(&sem_read_count) == 0)
+    if (sem_wait_wrapper(&sem_read_count) == 0) // get access to readers' count (RC)
     {
         ret_value = 0;
         return ret_value;
@@ -407,10 +476,10 @@ int reader(int (*read_operation)())
 
     critical_section_reader = 1;
 
-    global_tables->reader_sem_count++;
+    global_tables->reader_sem_count++; // increment RC by one
     D printf("DEBUG: READERS COUNT BEFORE = %i\n", global_tables->reader_sem_count);
 
-    if (global_tables->reader_sem_count == 1)
+    if (global_tables->reader_sem_count == 1) // if this is the first reader
     {
         if (sem_wait_wrapper(&sem_resource_access) == 0)
         {
@@ -419,30 +488,30 @@ int reader(int (*read_operation)())
         }
     }
 
-    if (sem_post_wrapper(&sem_read_count) == 0)
+    if (sem_post_wrapper(&sem_read_count) == 0) // release access to RC
     {
         ret_value = 0;
         return ret_value;
     }
 
-    if (read_operation() == 0)
+    if (read_operation() == 0) // execute read operation
     {
         ret_value = 0;
     }
 
     sleep(rand() % 10);
 
-    if (sem_wait_wrapper(&sem_read_count) == 0)
+    if (sem_wait_wrapper(&sem_read_count) == 0) // get access to RC
     {
         ret_value = 0;
         return ret_value;
     }
 
-    global_tables->reader_sem_count--;
+    global_tables->reader_sem_count--; // decrement RC
 
     D printf("DEBUG: READERS COUNT AFTER = %i\n", global_tables->reader_sem_count);
 
-    if (global_tables->reader_sem_count == 0)
+    if (global_tables->reader_sem_count == 0) // if this is the last reader
     {
         if (sem_post_wrapper(&sem_resource_access) == 0)
         {
@@ -452,7 +521,7 @@ int reader(int (*read_operation)())
     }
 
     critical_section_reader = 0;
-    if (sem_post_wrapper(&sem_read_count) == 0)
+    if (sem_post_wrapper(&sem_read_count) == 0) // release exclusive access to RC
     {
         ret_value = 0;
     }
@@ -460,6 +529,11 @@ int reader(int (*read_operation)())
     return ret_value;
 }
 
+/** 
+ * @brief  Writer function of the Readers and Writers problem stated in section 2.5.2
+ * @note   
+ * @retval  1 if success, 0 if error
+ */
 int writer(int (*write_operation)())
 {
 
@@ -467,7 +541,7 @@ int writer(int (*write_operation)())
 
     D printf(WRITER_FLAG);
 
-    if (sem_wait_wrapper(&sem_resource_access) == 0)
+    if (sem_wait_wrapper(&sem_resource_access) == 0) // get exclusive data access
     {
         ret_value = 0;
         return ret_value;
@@ -483,7 +557,7 @@ int writer(int (*write_operation)())
     sleep(rand() % 10);
 
     critical_section_writer = 0;
-    if (sem_post_wrapper(&sem_resource_access) == 0)
+    if (sem_post_wrapper(&sem_resource_access) == 0) // release exclusive access
     {
         ret_value = 0;
     }
@@ -495,6 +569,13 @@ int writer(int (*write_operation)())
 
 #pragma region UTILITY FUNCTIONS REGION
 
+/** 
+ * @brief  Map number from 3 digit format to corresponding index in array
+ * @note   
+ * @param  *table: Table number in 3 digits
+ * @param  *section: Section of table
+ * @retval Corresponding index in array of tables
+ */
 int table_no_to_index(char *table, char *section)
 {
     int table_int = 0;
@@ -508,10 +589,16 @@ int table_no_to_index(char *table, char *section)
     return (section_int == 2) ? 10 + index : index;
 }
 
+/** 
+ * @brief  Validator for the "reserve" command which checks validity of name, section and table number
+ * @note   
+ * @param  *name: Reservee's name
+ * @param  *section: A or B
+ * @param  *table: Optional, if specified has to be within 100-109 or 200-209
+ * @retval 1 if format is correct, 0 if incorrect
+ */
 int validate_reservation_format(char *name, char *section, char *table)
 {
-
-    // TODO: Change != NULL validations to strlen()
     if (strlen(name) > MAX_TABLE_SIZE)
     {
         printf(ERROR_MAX_NAME_LIMIT);
@@ -537,16 +624,36 @@ int validate_reservation_format(char *name, char *section, char *table)
     return 1;
 }
 
+/** 
+ * @brief  Validator to ensure that user specified a valid section
+ * @note   
+ * @param  *section: A or B
+ * @param  section_no: 1 or 2
+ * @retval 
+ */
 int validate_section(char *section, int section_no)
 {
     return section_no == 1 || section_no == 2;
 }
 
+/** 
+ * @brief  Validator to ensure, if a user has passed a table number, that the table number is valid
+ * @note   
+ * @param  section: A or B
+ * @param  table_no: from 100-109 or 200-209
+ * @retval 1 if correct, 0 if invalid number
+ */
 int validate_table_number(int section, int table_no)
 {
     return (section == 1 && (SECTION_1_LO <= table_no && table_no <= SECTION_1_UP)) || (section == 2 && (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP));
 }
 
+/** 
+ * @brief  Map section letter to corresponding section in the array.
+ * @note   Easier to do arithmetics when sections are presented as numbers instead of as letters.
+ * @param  *section: 
+ * @retval 1 if A, 2 if B, -1 if error
+ */
 int get_section_no(char *section)
 {
     if (strcmp(section, "A") == 0)
@@ -563,13 +670,12 @@ int get_section_no(char *section)
 }
 
 /** 
- * @brief Function provided by Prof. Harmouche
+ * @brief  Function used to tokenize input from buffer into array of arguments, where each index corresponds to a separate argument of the command
  * @note   
- * @param  *prompt: 
- * @param  *args[]: 
- * @param  *background: 
- * @retval Number of arguments
-  */
+ * @param  line[LINE_SIZE]: line buffer
+ * @param  args[MAX_ARGS][MAX_ARG_SIZE]: array of strings containing arguments 
+ * @retval 
+ */
 int getcmd(char line[LINE_SIZE], char args[MAX_ARGS][MAX_ARG_SIZE])
 {
     int count = 0;
@@ -608,6 +714,12 @@ unsigned long hash(unsigned char *str)
 
 #pragma SIGNAL HANDLER REGION
 
+/** 
+ * @brief  Signal handler used in case of an interruption in a CS
+ * @note   I asked Prof. Harmouche in the forum if this is necessary and she said no, so I guess you could say this part is deprecated
+ * @param  sig: 
+ * @retval None
+ */
 void signal_handler(int sig)
 {
 

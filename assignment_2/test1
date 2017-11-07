@@ -30,10 +30,12 @@ reserve boii A
 reserve boii A  
 reserve boii A  
 reserve boii A  
-init
+status
+status
 reserve boii21 B 204
+status
 reserve boii22 A 104 
+status
 reserve boii23 B 205
 status
-init
 exit
