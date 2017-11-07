@@ -24,15 +24,12 @@ int critical_section_reader;
 
 // TODO: Maybe add function to unlink all semaphores if timeout?
 // TODO: Read writer-reader's problem 2.5.2
-<<<<<<< HEAD
-=======
 // TODO: Comment code
 // TODO: Test
 // TODO: Test without debug
 // TODO: Test two files at the same time
 // TODO: Create edge case files
 // TODO: Remove all crappy code
->>>>>>> b2e37fcc18f63b442290454a359ec9dd66354f00
 
 int main(int argc, char *argv[])
 {
@@ -57,49 +54,51 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    //intialising random number generator
+    time_t now;
+    srand((unsigned int)(time(&now)));
+
     D printf(CREATION_OR_READ_SUCCESS);
 
     if (argc == 2)
     {
-<<<<<<< HEAD
-        int cnt = getcmd("\n>> ", args);
-=======
         FILE *fp;
 
         if ((fp = fopen(argv[1], "r")) == NULL)
         {
             perror(ERROR_WRONG_FILE);
         }
-
-        while (fgets(line, LINE_SIZE, fp) != NULL)
+        else
         {
-            cnt = getcmd(line, args);
-
-            if (cnt == 0)
+            while (fgets(line, LINE_SIZE, fp) != NULL)
             {
-                continue;
+                cnt = getcmd(line, args);
+
+                if (cnt == 0)
+                {
+                    continue;
+                }
+
+                if (execute_command(args, cnt) == 0)
+                {
+                    break;
+                }
+
+                memset(line, 0, sizeof(line));
+                memset(args, 0, sizeof(args));
             }
 
-            if (execute_command(args, cnt) == 0)
-            {
-                break;
-            }
-
-            memset(line, 0, sizeof(line));
-            memset(args, 0, sizeof(args));
+            fclose(fp);
         }
-
-        fclose(fp);
     }
 
     while (1 && argc == 1)
     {
-        printf(">");
+        printf(SHELL_TICKER);
         fgets(line, LINE_SIZE, stdin);
         cnt = getcmd(line, args);
 
         // D printf("table_no_og = %s\nnew_table = %i\n", args[0], table_no_to_index(args[0], args[1]));
->>>>>>> b2e37fcc18f63b442290454a359ec9dd66354f00
 
         if (execute_command(args, cnt) == 0)
         {
@@ -228,7 +227,7 @@ int make_reservation(char *name, char *section, char *table)
     int i = table_no_to_index(table, section);
 
     // TODO: Add error checking for table > table size
-    if (table != NULL)
+    if (strlen(table) != 0)
     {
         if (strlen(global_tables->reservations[i]) != 0)
         {
@@ -420,7 +419,6 @@ int reader(int (*read_operation)())
         }
     }
 
-    critical_section_reader = 0;
     if (sem_post_wrapper(&sem_read_count) == 0)
     {
         ret_value = 0;
@@ -432,15 +430,13 @@ int reader(int (*read_operation)())
         ret_value = 0;
     }
 
-    // TODO: Change this to the random sleep
-    D sleep(5);
+    sleep(rand() % 10);
 
     if (sem_wait_wrapper(&sem_read_count) == 0)
     {
         ret_value = 0;
         return ret_value;
     }
-    critical_section_reader = 1;
 
     global_tables->reader_sem_count--;
 
@@ -484,7 +480,7 @@ int writer(int (*write_operation)())
         ret_value = 0;
     }
 
-    D sleep(5);
+    sleep(rand() % 10);
 
     critical_section_writer = 0;
     if (sem_post_wrapper(&sem_resource_access) == 0)
@@ -502,11 +498,11 @@ int writer(int (*write_operation)())
 int table_no_to_index(char *table, char *section)
 {
     int table_int = 0;
-    if (table != NULL)
+    if (strlen(table) != 0)
     {
         table_int = atoi(table);
     }
-    int section_int = atoi(section);
+    int section_int = get_section_no(section);
     int index = table_int % 10;
 
     return (section_int == 2) ? 10 + index : index;
@@ -522,7 +518,7 @@ int validate_reservation_format(char *name, char *section, char *table)
         return 0;
     }
 
-    int section_no = atoi(section);
+    int section_no = get_section_no(section);
 
     if (!validate_section(section, section_no))
     {
@@ -532,7 +528,7 @@ int validate_reservation_format(char *name, char *section, char *table)
 
     int table_no = atoi(table);
 
-    if (table != NULL & !validate_table_number(section_no, table_no))
+    if (strlen(table) != 0 & !validate_table_number(section_no, table_no))
     {
         printf(ERROR_TABLE_NUMBER);
         return 0;
@@ -543,12 +539,27 @@ int validate_reservation_format(char *name, char *section, char *table)
 
 int validate_section(char *section, int section_no)
 {
-    return section != NULL && (section_no == 1 || section_no == 2);
+    return section_no == 1 || section_no == 2;
 }
 
 int validate_table_number(int section, int table_no)
 {
     return (section == 1 && (SECTION_1_LO <= table_no && table_no <= SECTION_1_UP)) || (section == 2 && (SECTION_2_LO <= table_no && table_no <= SECTION_2_UP));
+}
+
+int get_section_no(char *section)
+{
+    if (strcmp(section, "A") == 0)
+    {
+        return 1;
+    }
+
+    if (strcmp(section, "B") == 0)
+    {
+        return 2;
+    }
+
+    return -1;
 }
 
 /** 
@@ -612,6 +623,7 @@ void signal_handler(int sig)
     {
         // to prevent race conditions, we release the current process from reader's section
         sem_post_wrapper(&sem_read_count);
+        sem_post_wrapper(&sem_resource_access);
 
         // we decrement the number of readers since we interrupted before it was decremented
         writer(LAMBDA(int _() {

@@ -1,9 +1,39 @@
-reserve bro 2 209 
-status 
-init 
 status
-reserve bro 2 209
+reserve boii1 A 100 
+reserve boii1 A 100 
+reserve boii4 A 
+reserve boii5 B
+reserve boii3 A 
+reserve boii6 A 
 status
-ladsaldaksl
-reserve bro 1 209
+status
+status
+status
+status
+status
+reserve boii8 A 
+reserve boii9 B
+reserve boii11 A
+reserve boii12 B
+status
+reserve boii14 B 
+reserve boii15 A
+reserve boii17 A
+reserve boii19 A
+reserve boii20 B
+status
+status
+status
+status
+status
+reserve boii A 
+reserve boii A  
+reserve boii A  
+reserve boii A  
+init
+reserve boii21 B 204
+reserve boii22 A 104 
+reserve boii23 B 205
+status
+init
 exit

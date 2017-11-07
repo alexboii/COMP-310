@@ -53,7 +53,7 @@
 #define ERROR_TABLE_NUMBER "Invalid table number.\n"
 #define ERROR_TABLE_NOT_AVAILABLE "Specified table is not available.\n"
 #define ERROR_TABLES_NOT_AVAILABLE "No tables are currently available.\n"
-#define ERROR_WRONG_FILE "Could not open the specified file. Does it exist?\n"
+#define ERROR_WRONG_FILE "Could not open the specified file"
 
 // #5 DEBUG STATEMENTS
 #define CALLBACK DEBUG_PREFIX "Executing callback...\n"
@@ -93,10 +93,12 @@ int validate_section(char *section, int section_no);
 int validate_table_number(int section, int table_no);
 int first_available_from(int table_offset);
 int wipe();
+int get_section_no(char *section);
 
 // #7 MISC
 #define LAMBDA(c_) ({ c_ _; })
 #define LEN(arr) ((int)(sizeof(arr) / sizeof(arr)[0]))
+#define SHELL_TICKER ">> "
 
 // SHARED MEMORY STRUCT FOR HOLDING TABLES
 typedef struct
