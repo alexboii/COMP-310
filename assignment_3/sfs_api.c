@@ -66,7 +66,10 @@ void mksfs(int fresh)
             }
         }
 
+        // TODO: Create method => store_in_memory();
         // write bitmap into memory block?
+
+        return;
     }
 }
 
