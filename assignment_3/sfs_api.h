@@ -21,6 +21,8 @@
 #define IS_ARRAY(arg) (IS_INDEXABLE(arg) && (((void *)&arg) == ((void *)arg)))
 #define ARRAYSIZE(arr) (IS_ARRAY(arr) ? (sizeof(arr) / sizeof(arr[0])) : 0)
 
+#define POINTER_SIZE 12
+
 // for debugging purposes
 #ifdef DEBUG
 #define D
@@ -39,14 +41,14 @@ typedef struct superblock_t
 
 typedef struct inode_t
 {
-    unsigned int free;
     unsigned int mode;
     unsigned int link_cnt;
     unsigned int uid;
     unsigned int gid;
     unsigned int size;
-    unsigned int data_ptrs[12];
+    unsigned int data_ptrs[POINTER_SIZE];
     unsigned int indirectPointer; // points to a data block that points to other data blocks (Single indirect)
+    int free;
 } inode_t;
 
 /*
@@ -65,6 +67,7 @@ typedef struct directory_entry
 {
     int num;                  // represents the inode number of the entery.
     char name[MAX_FILE_NAME]; // represents the name of the entery.
+    int free;
 } directory_entry;
 
 #define MAX_FILE_NAME 20
@@ -78,6 +81,8 @@ typedef struct directory_entry
 // inode constants
 #define INODE_NO 14
 #define INODE_BLOCKS_NO (sizeof(inode_t) * INODE_NO / BLOCK_SIZE + 1)
+#define DIR_BLOCKS_NO (sizeof(entry_t) * INODE_NO / BLOCK_SIZE + 1)
+#define DUMMY_INITIALIZER -1
 
 //maximum number of data blocks on the disk.
 #define BITMAP_ROW_SIZE (NUM_BLOCKS / 8) // this essentially mimcs the number of rows we have in the bitmap. we will have 128 rows.
