@@ -118,5 +118,8 @@ int find_empty_dir();
 #define INODE_TABLE_FULL ERROR "Inode table is full. \n"
 #define ROOT_TABLE_FULL ERROR "Root table is full. \n"
 #define INVALID_FILE_ID ERROR "You have entered an invalid file ID. \n"
+#define FILE_NOT_OPEN ERROR "The file you are trying to access is not opened. \n"
+#define WRONG_LENGTH ERROR "Cannot have length less or equal to 0. \n"
+#define BUF_NULL ERROR "Buffer cannot be empty. \n"
 
 #endif //_INCLUDE_SFS_API_H_
