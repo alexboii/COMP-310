@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "stdarg.h": "c",
+        "ctype.h": "c"
+    }
+}

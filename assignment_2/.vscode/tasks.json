@@ -4,7 +4,9 @@
     "isShellCommand": true,
     "args": [
         "-g",
-        "assignment_2.c"
+        "a2_fall2017.c",
+        "-lrt",
+        "-pthread"
     ],
     "showOutput": "always"
 }
