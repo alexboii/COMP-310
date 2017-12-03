@@ -38,9 +38,18 @@ void mksfs(int fresh)
         force_set_index(0);
 
         // initialize inode table
+        // TODO: Initialize this properly
         for (int i = 0; i < ARRAYSIZE(inode_table); i++)
         {
             inode_table[i].empty = 1;
+            inode_table[i].size = -1;
+            inode_table[i].indirectPointer = -1;
+
+            for (int j = 0; j < 12; j++)
+            {
+                inode_table[i].data_ptrs[j] = -1;
+            }
+
             root[i].empty = 1;
         }
 
@@ -322,7 +331,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
 
         if (first_block < POINTER_SIZE)
         {
-            if (inode->data_ptrs[i] == -1 || inode->data_ptrs[i] == NULL)
+            if (inode->data_ptrs[i] == -1)
             {
                 int free_data = get_index();
                 if (free_data == -1)
@@ -347,7 +356,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
             D printf("Am I here? idnirect pointers 1");
 
             // if no indirect pointers initialized
-            if (inode->indirectPointer == -1 || inode->indirectPointer == NULL)
+            if (inode->indirectPointer == -1)
             {
                 // TODO: Refactor this
                 int free_indirect_data = get_index();
@@ -362,7 +371,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
                 // TODO: Extract 256 constant
                 for (int i = 0; i < 256; i++)
                 {
-                    indirect_pointers[i] = NULL;
+                    indirect_pointers[i] = -1;
                 }
 
                 write_blocks(free_indirect_data, 1, indirect_pointers);
@@ -377,7 +386,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
             // if indirect pointers already exist
             read_blocks(inode->indirectPointer, 1, indirect_pointers);
 
-            if (indirect_pointers[i - POINTER_SIZE] == NULL || indirect_pointers[i - POINTER_SIZE] == -1)
+            if (indirect_pointers[i - POINTER_SIZE] == -1)
             {
 
                 int free_indirect_data = get_index();
@@ -458,7 +467,7 @@ int sfs_remove(char *file)
         }
     }
 
-    if (inode == NULL || inode == -1)
+    if (inode == -1)
     {
         printf(FILE_NOT_FOUND);
         return -1;
@@ -466,17 +475,17 @@ int sfs_remove(char *file)
 
     for (int j = 0; j < POINTER_SIZE; j++)
     {
-        if (inode_table[inode].data_ptrs[j] != NULL && inode_table[inode].data_ptrs[j] != -1)
+        if (inode_table[inode].data_ptrs[j] != -1)
         {
             rm_index(inode_table[i].data_ptrs[j]);
-            inode_table[inode].data_ptrs[j] = NULL;
+            inode_table[inode].data_ptrs[j] = -1;
         }
     }
 
-    if (inode_table[inode].indirectPointer != -1 && inode_table[inode].indirectPointer != NULL)
+    if (inode_table[inode].indirectPointer != -1)
     {
         rm_index(inode_table[inode].indirectPointer);
-        inode_table[inode].indirectPointer = NULL;
+        inode_table[inode].indirectPointer = -1;
     }
 
     set_root_table_entry(i, 1, -1, "\0");
@@ -656,7 +665,7 @@ uint32_t get_index()
         i++;
     }
 
-    if (index >= BLOCK_SIZE - 1)
+    if (i >= BLOCK_SIZE - 1)
     {
         // nothing available
         return -1;
