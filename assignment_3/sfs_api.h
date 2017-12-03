@@ -121,5 +121,6 @@ int find_empty_dir();
 #define FILE_NOT_OPEN ERROR "The file you are trying to access is not opened. \n"
 #define WRONG_LENGTH ERROR "Cannot have length less or equal to 0. \n"
 #define BUF_NULL ERROR "Buffer cannot be empty. \n"
+#define FILE_NOT_FOUND ERROR "File could not be found. \n"
 
 #endif //_INCLUDE_SFS_API_H_

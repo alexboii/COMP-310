@@ -11,7 +11,7 @@
 #pragma region GLOBAL DEFINITIONS
 
 // seriously, sorry again for these global variables, but I think it is forgiveable in this assignment since we're implementing an API, no main()
-superblock_t *sb;
+superblock_t sb;
 inode_t inode_table[INODES];
 directory_entry root[INODES];
 file_descriptor fd_table[INODES];
@@ -31,28 +31,30 @@ void mksfs(int fresh)
         D printf("New file system \n");
 
         // format virtual disk provided by emulator
-        assert(init_fresh_disk(LASTNAME_FIRSTNAME_DISK, BLOCK_SIZE, NUM_BLOCKS));
+        init_fresh_disk(LASTNAME_FIRSTNAME_DISK, BLOCK_SIZE, NUM_BLOCKS);
 
         // initialize superblock
-        assert(superblock_init());
+        superblock_init();
         force_set_index(0);
 
         // initialize inode table
         for (int i = 0; i < ARRAYSIZE(inode_table); i++)
         {
-            inode_table->empty = 1;
+            inode_table[i].empty = 1;
+            root[i].empty = 1;
         }
 
         // initialize fd table
         for (int i = 0; i < ARRAYSIZE(fd_table); i++)
         {
-            fd_table->empty = 1;
+            set_fd(i, 1, -1, NULL, -1);
         }
 
         set_fd(0, 0, 0, &inode_table[0], 0);
+        inode_table[0].empty = 0; // we set it to be used because we just assigned root to it
 
         // initialize node table
-        for (int i = 1; i < INODE_BLOCKS_NO; i++) // start from 1 because first block for sb
+        for (int i = 1; i < ARRAYSIZE(inode_table); i++) // start from 1 because first block for sb
         {
             force_set_index(i);
         }
@@ -65,23 +67,17 @@ void mksfs(int fresh)
             force_set_index(inode_wrapper); // store root directory in bitmap
         }
 
-        // store inode table in bitmap
-        for (int i = 1; i < FS_SIZE_INITIAL + 1; i++) // start from 1 because first block for sb
-        {
-            force_set_index(i);
-        }
-
         // store bitmap itself in bitamp
         force_set_index(NUM_BLOCKS - 1);
 
-        assert(store_in_disk());
+        store_in_disk();
 
         return;
     }
 
     D printf("Open existing file system \n");
 
-    assert(read_blocks(0, 1, &sb));
+    read_blocks(0, 1, &sb);
 
     return;
 }
@@ -136,6 +132,7 @@ int sfs_fopen(char *name)
         if (fd_num != -1)
         {
             // if the file is already open, we return it
+            D printf("File already open");
             return fd_num;
         }
 
@@ -162,6 +159,8 @@ int sfs_fopen(char *name)
         return -1;
     }
 
+    inode_table[empty_inode].empty = 0;
+
     int empty_root_entry = find_empty_dir();
 
     if (empty_root_entry == -1)
@@ -173,8 +172,6 @@ int sfs_fopen(char *name)
     // write file in root directory
     set_root_table_entry(empty_root_entry, 0, empty_inode, name);
 
-    // inode_table[empty_inode].size = 0;
-
     int empty_fd_table_entry = find_empty_fd();
 
     if (empty_fd_table_entry == -1)
@@ -184,8 +181,8 @@ int sfs_fopen(char *name)
     }
 
     set_fd(empty_fd_table_entry, 0, empty_inode, &inode_table[empty_inode], inode_table[empty_inode].size);
-    write_blocks(1, sb->inode_table_len, inode_table);
-    write_blocks(1 + sb->inode_table_len, DIR_BLOCKS, root);
+    write_blocks(1, sb.inode_table_len, inode_table);
+    write_blocks(1 + sb.inode_table_len, DIR_BLOCKS, root);
 
     return empty_fd_table_entry;
 }
@@ -236,23 +233,23 @@ int sfs_fread(int fileID, char *buf, int length)
     }
 
     // starting block
-    int offset = fd->rwptr / sb->block_size;
+    int offset = fd->rwptr / sb.block_size;
 
     // which block we started at + which blocked we stopped writing at = total # of blocks to read
-    int blocks_to_read = ((fd->rwptr % sb->block_size) + wrapped_length) / sb->block_size + 1;
+    int blocks_to_read = ((fd->rwptr % sb.block_size) + wrapped_length) / sb.block_size + 1;
 
     D printf("BLOCKS TO READ: %i \n", blocks_to_read);
 
-    char *block_buffer = calloc(1, sb->block_size);                           // hold each block
-    char *file_buffer = calloc(1, (size_t)(blocks_to_read * sb->block_size)); // hold the whole file
+    char *block_buffer = calloc(1, sb.block_size);                           // hold each block
+    char *file_buffer = calloc(1, (size_t)(blocks_to_read * sb.block_size)); // hold the whole file
 
-    int *ind_pointers = malloc(sb->block_size);
+    int *ind_pointers = malloc(sb.block_size);
 
     for (int i = 0; i < blocks_to_read; i++)
     {
         if (i != 0)
         {
-            memset(block_buffer, 0, sb->block_size); // reset buffer from previous iteration
+            memset(block_buffer, 0, sb.block_size); // reset buffer from previous iteration
         }
 
         int current_block;
@@ -280,7 +277,7 @@ int sfs_fread(int fileID, char *buf, int length)
         }
 
         read_blocks(current_block, 1, block_buffer);
-        memcpy(file_buffer + (i + sb->block_size), block_buffer, sb->block_size); // add current block to whole file
+        memcpy(file_buffer + (i + sb.block_size), block_buffer, sb.block_size); // add current block to whole file
     }
 
     // memcpy(buf, file_buffer, wrapped_length);
@@ -297,16 +294,197 @@ int sfs_fread(int fileID, char *buf, int length)
 int sfs_fwrite(int fileID, const char *buf, int length)
 {
     D printf("I'm in sfs_fwrite\n");
+
+    if (fd_table[fileID].empty == 1 || fd_table[fileID].inodeIndex == -1 || length > MAX_FILE_NAME)
+    {
+        printf(INVALID_FILE_NAME);
+        return -1;
+    }
+
+    file_descriptor *fd = &fd_table[fileID];
+    inode_t *inode = &inode_table[fd->inodeIndex];
+
+    // if the file is empty, assign new block to inode
+    if (inode->size <= 0)
+    {
+        inode->data_ptrs[0] = get_index();
+    }
+
+    int first_block = fd->rwptr / sb.block_size;
+    int blocks_to_read = ((fd->rwptr) + length) / sb.block_size; // MAYBE DO +1?
+    int buffer_pointer = 0;
+
+    for (int i = first_block; i <= blocks_to_read; i++)
+    {
+
+        int current_block;
+        char *buffer = malloc(BLOCK_SIZE);
+
+        if (first_block < POINTER_SIZE)
+        {
+            if (inode->data_ptrs[i] == -1 || inode->data_ptrs[i] == NULL)
+            {
+                int free_data = get_index();
+                if (free_data == -1)
+                {
+                    D printf("No free space in BM");
+                    return -1;
+                }
+
+                current_block = free_data;
+                inode->data_ptrs[i] = current_block;
+            }
+            else
+            {
+                current_block = inode->data_ptrs[i];
+            }
+        }
+        else
+        {
+            //indirect pointers
+            int *indirect_pointers = malloc(BLOCK_SIZE);
+
+            D printf("Am I here? idnirect pointers 1");
+
+            // if no indirect pointers initialized
+            if (inode->indirectPointer == -1 || inode->indirectPointer == NULL)
+            {
+                // TODO: Refactor this
+                int free_indirect_data = get_index();
+
+                if (free_indirect_data == -1)
+                {
+                    D printf("No free space in BM");
+                    return -1;
+                }
+
+                // initialize empty data blocks
+                // TODO: Extract 256 constant
+                for (int i = 0; i < 256; i++)
+                {
+                    indirect_pointers[i] = NULL;
+                }
+
+                write_blocks(free_indirect_data, 1, indirect_pointers);
+                inode->indirectPointer = free_indirect_data;
+
+                free(indirect_pointers);
+                // NO THIS WILL CAUSE A BUG, CONSIDER MAKING INTO WHILE LOOP INSTEAD
+                // THIS WILL NOT REINITIALIZE THE COUNTER I++ TO BE THE SAME
+                continue;
+            }
+
+            // if indirect pointers already exist
+            read_blocks(inode->indirectPointer, 1, indirect_pointers);
+
+            if (indirect_pointers[i - POINTER_SIZE] == NULL || indirect_pointers[i - POINTER_SIZE] == -1)
+            {
+
+                int free_indirect_data = get_index();
+
+                if (free_indirect_data == -1)
+                {
+                    D printf("No free space in BM");
+                    return -1;
+                }
+
+                indirect_pointers[i - 12] = free_indirect_data;
+
+                // persist the newly defined indirect pointers
+                write_blocks(inode->indirectPointer, 1, indirect_pointers);
+
+                current_block = indirect_pointers[i - 12];
+
+                D printf("Am I here? idnirect pointers 2");
+                // MIGHT CAUSE A BUG
+                free(indirect_pointers);
+            }
+        }
+
+        read_blocks(current_block, 1, buffer);
+
+        // if we're at the first block, we have to start copying from whatever the first bytes of the first block might be, else we're starting from a new block
+        // and therefore we have to read from the beginning
+        int last_block_index = (i == blocks_to_read) ? (fd->rwptr + length) % sb.block_size : sb.block_size;
+        int block_start_offset = (i == first_block) ? fd->rwptr % sb.block_size : 0;
+        int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : 0;
+        memcpy(&buffer[block_start_offset], &buf[buffer_pointer], block_end_offset);
+        write_blocks(current_block, 1, buffer);
+
+        buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index : i;
+
+        free(buffer);
+    }
+
+    // REFACTOR THIS?
+    if (inode->size < fd->rwptr + length)
+    {
+        inode->size = fd->rwptr + length;
+    }
+
+    // place pointer to its new position if everything successful :)
+    fd->rwptr = fd->rwptr + length;
+
+    // persist changes in the inode table
+    write_blocks(1, sb.inode_table_len, inode_table);
+
+    return buffer_pointer;
 }
 
 int sfs_fseek(int fileID, int loc)
 {
     D printf("I'm in sfs_fseek\n");
+
+    // TODO: Do error checking here
+
+    fd_table[fileID].rwptr = loc;
+    return 0;
 }
 
 int sfs_remove(char *file)
 {
     D printf("I'm in sfs_remove\n");
+
+    int inode = -1;
+    int i;
+
+    // refactor into own method
+    for (i = 0; i < ARRAYSIZE(root); i++)
+    {
+        if (root[i].empty == 0 && strcmp(root[i].name, file) == 0)
+        {
+            inode = root[i].num;
+            break;
+        }
+    }
+
+    if (inode == NULL || inode == -1)
+    {
+        printf(FILE_NOT_FOUND);
+        return -1;
+    }
+
+    for (int j = 0; j < POINTER_SIZE; j++)
+    {
+        if (inode_table[inode].data_ptrs[j] != NULL && inode_table[inode].data_ptrs[j] != -1)
+        {
+            rm_index(inode_table[i].data_ptrs[j]);
+            inode_table[inode].data_ptrs[j] = NULL;
+        }
+    }
+
+    if (inode_table[inode].indirectPointer != -1 && inode_table[inode].indirectPointer != NULL)
+    {
+        rm_index(inode_table[inode].indirectPointer);
+        inode_table[inode].indirectPointer = NULL;
+    }
+
+    set_root_table_entry(i, 1, -1, "\0");
+
+    write_blocks(1, sb.inode_table_len, inode_table);
+    write_blocks(1 + sb.inode_table_len, DIR_BLOCKS, root);
+
+    return 0;
 }
 
 #pragma endregion
@@ -315,8 +493,9 @@ int sfs_remove(char *file)
 
 int store_in_disk()
 {
-    if (write_blocks(0, 1, &sb) == 0 || write_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || write_blocks(1, FS_SIZE_INITIAL, inode_table) == 0 || write_blocks(FS_SIZE_INITIAL + 1, DIR_BLOCKS, root) == 0)
+    if (write_blocks((int)0, (int)1, &sb) == 0 || write_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || write_blocks(1, INODE_BLOCKS_NO, inode_table) == 0 || write_blocks(INODE_BLOCKS_NO + 1, DIR_BLOCKS, root) == 0)
     {
+        D printf("Error writing blocks");
         return 0;
     }
 
@@ -325,8 +504,9 @@ int store_in_disk()
 
 int read_all_from_disk()
 {
-    if (read_blocks(0, 1, &sb) == 0 || read_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || read_blocks(1, FS_SIZE_INITIAL, inode_table) == 0 || read_blocks(FS_SIZE_INITIAL + 1, DIR_BLOCKS, fd_table) == 0)
+    if (read_blocks(0, 1, (void *)&sb) == 0 || read_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || read_blocks(1, INODE_BLOCKS_NO, inode_table) == 0 || write_blocks(INODE_BLOCKS_NO + 1, DIR_BLOCKS, root) == 0)
     {
+        D printf("Error reading blocks");
         return 0;
     }
 
@@ -375,11 +555,11 @@ int find_file_fd_table(int inode_num)
 
 int superblock_init()
 {
-    sb->magic = MAGIC;
-    sb->block_size = BLOCK_SIZE;
-    sb->fs_size = FS_SIZE_INITIAL;
-    sb->inode_table_len = INODE_BLOCKS_NO;
-    sb->root_dir_inode = 0;
+    sb.magic = MAGIC;
+    sb.block_size = BLOCK_SIZE;
+    sb.fs_size = FS_SIZE_INITIAL;
+    sb.inode_table_len = INODE_BLOCKS_NO;
+    sb.root_dir_inode = 0;
 
     // TODO: think of some ways this method would fail?
     return 1;
@@ -442,11 +622,11 @@ int find_empty_dir()
 
 #pragma endregion
 
-int main()
-{
-    // mksfs(1);
-    sfs_fopen("text.txt");
-}
+    // int main()
+    // {
+    //     // mksfs(1);
+    //     sfs_fopen("text.txt");
+    // }
 
 #pragma region BITMAP REGION
 
@@ -460,6 +640,9 @@ void force_set_index(uint32_t index)
 
     // use bit
     USE_BIT(free_bit_map[i], bit);
+
+    // persist the bm
+    write_blocks(1023, 1, free_bit_map);
 }
 
 uint32_t get_index()
@@ -471,6 +654,12 @@ uint32_t get_index()
     while (free_bit_map[i] == 0)
     {
         i++;
+    }
+
+    if (index >= BLOCK_SIZE - 1)
+    {
+        // nothing available
+        return -1;
     }
 
     // now, find the first free bit
@@ -485,6 +674,9 @@ uint32_t get_index()
 
     // set the bit to used
     USE_BIT(free_bit_map[i], bit);
+
+    // persist the bm
+    write_blocks(1023, 1, free_bit_map);
 
     //return which block we used
     return i * 8 + bit;
@@ -501,6 +693,9 @@ void rm_index(uint32_t index)
 
     // free bit
     FREE_BIT(free_bit_map[i], bit);
+
+    // persist the bm
+    write_blocks(1023, 1, free_bit_map);
 }
 
 #pragma endregion
