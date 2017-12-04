@@ -29,7 +29,7 @@ void mksfs(int fresh)
 
     if (fresh)
     {
-        D printf("New file system \n");
+        D printf("New file system  \n");
 
         // format virtual disk provided by emulator
         init_fresh_disk(LASTNAME_FIRSTNAME_DISK, BLOCK_SIZE, NUM_BLOCKS);
@@ -284,6 +284,8 @@ int sfs_fread(int fileID, char *buf, int length)
             read_blocks(inode->indirectPointer, 1, ind_pointers);
             D printf("Indirect pointers in read?: %i \n", ind_pointers[i - POINTER_SIZE]);
             current_block = ind_pointers[i - POINTER_SIZE];
+
+            free(ind_pointers);
         }
 
         read_blocks(current_block, 1, block_buffer);
@@ -393,6 +395,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
                 write_blocks(free_indirect_data, 1, indirect_pointers);
                 inode->indirectPointer = free_indirect_data;
 
+                free(buffer);
                 free(indirect_pointers);
                 // NO THIS WILL CAUSE A BUG, CONSIDER MAKING INTO WHILE LOOP INSTEAD
                 // THIS WILL NOT REINITIALIZE THE COUNTER I++ TO BE THE SAME
@@ -428,6 +431,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
             }
 
             current_block = indirect_pointers[i - POINTER_SIZE];
+            free(indirect_pointers);
         }
 
         read_blocks(current_block, 1, buffer);
