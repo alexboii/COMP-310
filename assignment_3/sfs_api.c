@@ -42,7 +42,7 @@ void mksfs(int fresh)
         for (int i = 0; i < ARRAYSIZE(inode_table); i++)
         {
             inode_table[i].empty = 1;
-            inode_table[i].size = -1;
+            inode_table[i].size = 0;
             inode_table[i].indirectPointer = -1;
 
             for (int j = 0; j < 12; j++)
@@ -84,10 +84,15 @@ void mksfs(int fresh)
         return;
     }
 
+    // initialize fd table
+    for (int i = 0; i < ARRAYSIZE(fd_table); i++)
+    {
+        set_fd(i, 1, -1, NULL, -1);
+    }
+
     D printf("Open existing file system \n");
 
-    read_blocks(0, 1, &sb);
-
+    read_all_from_disk();
     return;
 }
 
@@ -200,7 +205,7 @@ int sfs_fclose(int fileID)
 {
     D printf("I'm in sfs_fclose\n");
 
-    if (fileID > INODES || fileID < 0)
+    if (fileID > INODES || fileID < 0 || fd_table[fileID].empty == 1)
     {
         printf(INVALID_FILE_ID);
         return -1;
@@ -225,7 +230,7 @@ int sfs_fread(int fileID, char *buf, int length)
         return 0;
     }
 
-    if (fd_table[fileID].empty == 0)
+    if (fd_table[fileID].empty == 1)
     {
         printf(FILE_NOT_OPEN);
         return 0;
@@ -242,24 +247,21 @@ int sfs_fread(int fileID, char *buf, int length)
     }
 
     // starting block
-    int offset = fd->rwptr / sb.block_size;
+    int first_block = fd->rwptr / sb.block_size;
 
     // which block we started at + which blocked we stopped writing at = total # of blocks to read
-    int blocks_to_read = ((fd->rwptr % sb.block_size) + wrapped_length) / sb.block_size + 1;
+    int blocks_to_read = ((fd->rwptr) + wrapped_length) / sb.block_size;
 
     D printf("BLOCKS TO READ: %i \n", blocks_to_read);
 
-    char *block_buffer = calloc(1, sb.block_size);                           // hold each block
-    char *file_buffer = calloc(1, (size_t)(blocks_to_read * sb.block_size)); // hold the whole file
+    D printf("Wrapped length: %i\n", wrapped_length);
+    char *file_buffer = malloc(wrapped_length); // hold the whole file
 
-    int *ind_pointers = malloc(sb.block_size);
+    int buffer_pointer = 0;
 
-    for (int i = 0; i < blocks_to_read; i++)
+    for (int i = first_block; i <= blocks_to_read; i++)
     {
-        if (i != 0)
-        {
-            memset(block_buffer, 0, sb.block_size); // reset buffer from previous iteration
-        }
+        char *block_buffer = malloc(sb.block_size); // hold each block
 
         int current_block;
 
@@ -272,39 +274,46 @@ int sfs_fread(int fileID, char *buf, int length)
         // if the block to read is in the indirect pointer
         else
         {
-            if (inode->indirectPointer != -1)
-            {
-                read_blocks(inode->indirectPointer, 1, ind_pointers);
-                current_block = ind_pointers[i - POINTER_SIZE];
-            }
-            else
-            {
-                free(block_buffer);
-                free(file_buffer);
-                return 0;
-            }
+            int *ind_pointers = malloc(sb.block_size);
+
+            read_blocks(inode->indirectPointer, 1, ind_pointers);
+            D printf("Indirect pointers in read?: %i \n", ind_pointers[i - POINTER_SIZE]);
+            current_block = ind_pointers[i - POINTER_SIZE];
         }
 
         read_blocks(current_block, 1, block_buffer);
-        memcpy(file_buffer + (i + sb.block_size), block_buffer, sb.block_size); // add current block to whole file
+
+        int last_block_index = (i == blocks_to_read) ? (fd->rwptr + length) % sb.block_size : sb.block_size;
+        int block_start_offset = (i == first_block) ? fd->rwptr % sb.block_size : 0;
+        int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : last_block_index;
+        memcpy(&file_buffer[buffer_pointer], &block_buffer[block_start_offset], block_end_offset);
+
+        buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index - fd->rwptr % sb.block_size : buffer_pointer + last_block_index;
+        D printf("Line 425: What's buff pointer? \n", buffer_pointer);
+
+        free(block_buffer);
+        // read_blocks(current_block, 1, block_buffer);
+        // memcpy(file_buffer + (i + sb.block_size), block_buffer, sb.block_size); // add current block to whole file
     }
 
     // memcpy(buf, file_buffer, wrapped_length);
 
-    memcpy(buf, file_buffer + fd->rwptr, wrapped_length);
-
-    free(block_buffer);
+    memcpy(buf, file_buffer, wrapped_length);
     free(file_buffer);
-    free(ind_pointers);
 
-    return wrapped_length;
+    fd->rwptr = fd->rwptr + wrapped_length;
+    // free(block_buffer);
+    // free(file_buffer);
+    // free(ind_pointers);
+
+    return buffer_pointer;
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length)
 {
     D printf("I'm in sfs_fwrite\n");
 
-    if (fd_table[fileID].empty == 1 || fd_table[fileID].inodeIndex == -1 || length > MAX_FILE_NAME)
+    if (fd_table[fileID].empty == 1 || fd_table[fileID].inodeIndex == -1 || length > MAX_FILE_SIZE)
     {
         printf(INVALID_FILE_NAME);
         return -1;
@@ -314,6 +323,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
     inode_t *inode = &inode_table[fd->inodeIndex];
 
     // if the file is empty, assign new block to inode
+    // TODO: This might be useless code
     if (inode->size <= 0)
     {
         inode->data_ptrs[0] = get_index();
@@ -323,13 +333,14 @@ int sfs_fwrite(int fileID, const char *buf, int length)
     int blocks_to_read = ((fd->rwptr) + length) / sb.block_size; // MAYBE DO +1?
     int buffer_pointer = 0;
 
-    for (int i = first_block; i <= blocks_to_read; i++)
+    int i = first_block;
+    while (i <= blocks_to_read)
     {
 
         int current_block;
         char *buffer = malloc(BLOCK_SIZE);
 
-        if (first_block < POINTER_SIZE)
+        if (i < POINTER_SIZE)
         {
             if (inode->data_ptrs[i] == -1)
             {
@@ -397,17 +408,19 @@ int sfs_fwrite(int fileID, const char *buf, int length)
                     return -1;
                 }
 
-                indirect_pointers[i - 12] = free_indirect_data;
+                indirect_pointers[i - POINTER_SIZE] = free_indirect_data;
 
                 // persist the newly defined indirect pointers
                 write_blocks(inode->indirectPointer, 1, indirect_pointers);
 
-                current_block = indirect_pointers[i - 12];
-
                 D printf("Am I here? idnirect pointers 2");
                 // MIGHT CAUSE A BUG
-                free(indirect_pointers);
+                // TODO: Find out when to free here
+
+                // free(indirect_pointers);
             }
+
+            current_block = indirect_pointers[i - POINTER_SIZE];
         }
 
         read_blocks(current_block, 1, buffer);
@@ -416,13 +429,15 @@ int sfs_fwrite(int fileID, const char *buf, int length)
         // and therefore we have to read from the beginning
         int last_block_index = (i == blocks_to_read) ? (fd->rwptr + length) % sb.block_size : sb.block_size;
         int block_start_offset = (i == first_block) ? fd->rwptr % sb.block_size : 0;
-        int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : 0;
+        int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : last_block_index;
         memcpy(&buffer[block_start_offset], &buf[buffer_pointer], block_end_offset);
         write_blocks(current_block, 1, buffer);
 
-        buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index : i;
+        buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index - fd->rwptr % sb.block_size : buffer_pointer + last_block_index;
+        D printf("Line 425: What's buff pointer? \n", buffer_pointer);
 
         free(buffer);
+        i++;
     }
 
     // REFACTOR THIS?
@@ -437,6 +452,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
     // persist changes in the inode table
     write_blocks(1, sb.inode_table_len, inode_table);
 
+    D printf("Line 442: What's buff pointer? \n", buffer_pointer);
     return buffer_pointer;
 }
 
@@ -513,9 +529,9 @@ int store_in_disk()
 
 int read_all_from_disk()
 {
-    if (read_blocks(0, 1, (void *)&sb) == 0 || read_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || read_blocks(1, INODE_BLOCKS_NO, inode_table) == 0 || write_blocks(INODE_BLOCKS_NO + 1, DIR_BLOCKS, root) == 0)
+    if (read_blocks(0, 1, (void *)&sb) == 0 || read_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || read_blocks(1, INODE_BLOCKS_NO, inode_table) == 0)
     {
-        D printf("Error reading blocks");
+        printf("Error reading blocks");
         return 0;
     }
 

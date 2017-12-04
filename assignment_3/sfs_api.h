@@ -87,6 +87,8 @@ typedef struct directory_entry
 #define DIR_BLOCKS (sizeof(directory_entry) * INODES) / BLOCK_SIZE + 1
 #define DUMMY_INITIALIZER -1
 #define FS_SIZE_INITIAL NUM_BLOCKS *BLOCK_SIZE
+#define MAX_INDIRECT 12
+#define MAX_FILE_SIZE (MAX_INDIRECT * 256) * BLOCK_SIZE
 
 //maximum number of data blocks on the disk.
 #define BITMAP_ROW_SIZE (NUM_BLOCKS / 8) // this essentially mimcs the number of rows we have in the bitmap. we will have 128 rows.
