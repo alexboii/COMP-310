@@ -70,12 +70,13 @@ void mksfs(int fresh)
         }
 
         // initialize directory's pointers for root
-        int j = 0;
-        for (int i = (int)sb.inode_table_len + 1; i <= sb.inode_table_len + DIR_BLOCKS + 1; i++)
+        // TODO: rever this to what it was
+        // initialize directory's pointers for root
+        for (int i = 0; i < DIR_BLOCKS; i++)
         {
-            force_set_index(i);
-            inode_table[0].data_ptrs[j] = (unsigned)i;
-            j++;
+            int inode_wrapper = i + INODE_BLOCKS_NO + 1;
+            inode_table[0].data_ptrs[i] = (unsigned int)inode_wrapper;
+            force_set_index(inode_wrapper); // store root directory in bitmap
         }
 
         // store bitmap itself in bitamp
@@ -85,11 +86,6 @@ void mksfs(int fresh)
 
         return;
     }
-
-    // for (int i = 0; i < ARRAYSIZE(root); i++)
-    // {
-    //     set_root_table_entry(i, 1, -1, "\0");
-    // }
 
     // initialize fd table
     for (int i = 0; i < ARRAYSIZE(fd_table); i++)
@@ -295,7 +291,7 @@ int sfs_fread(int fileID, char *buf, int length)
         int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : last_block_index;
         memcpy(&file_buffer[buffer_pointer], &block_buffer[block_start_offset], block_end_offset);
 
-        D printf("Did I even get in here 2?\n");
+        D printf("Did I even get in here 2? \n");
         buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index - fd->rwptr % sb.block_size : buffer_pointer + last_block_index;
         D printf("Line 425: What's buff pointer? %i\n", buffer_pointer);
 
@@ -340,8 +336,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
     int blocks_to_read = ((fd->rwptr) + length) / sb.block_size; // MAYBE DO +1?
     int buffer_pointer = 0;
 
-    int i = first_block;
-    while (i <= blocks_to_read)
+    for (int i = first_block; i <= blocks_to_read; i++)
     {
 
         int current_block;
@@ -374,6 +369,8 @@ int sfs_fwrite(int fileID, const char *buf, int length)
             D printf("Am I here? idnirect pointers 1");
 
             // if no indirect pointers initialized
+
+            // TODO: extract this into own method
             if (inode->indirectPointer == -1)
             {
                 // TODO: Refactor this
@@ -397,10 +394,9 @@ int sfs_fwrite(int fileID, const char *buf, int length)
 
                 free(buffer);
                 free(indirect_pointers);
-                // NO THIS WILL CAUSE A BUG, CONSIDER MAKING INTO WHILE LOOP INSTEAD
-                // THIS WILL NOT REINITIALIZE THE COUNTER I++ TO BE THE SAME
-                // TODO: Figure out how to do this with a for loop
-                // i.e. i = i - 1;
+
+                // since we require an indirect pointer to be initializer, but we did not do it
+                i = i - 1;
                 continue;
             }
 
@@ -448,7 +444,6 @@ int sfs_fwrite(int fileID, const char *buf, int length)
         D printf("Line 425: What's buff pointer? \n", buffer_pointer);
 
         free(buffer);
-        i++;
     }
 
     inode->size = fd->rwptr + length;
@@ -527,7 +522,7 @@ int store_in_disk()
 {
     save_inode_table();
 
-    if (write_blocks((int)0, (int)1, &sb) == 0 || write_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || write_blocks((int)sb.inode_table_len + 1, DIR_BLOCKS, root) == 0)
+    if (write_blocks((int)0, (int)1, &sb) == 0 || write_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || write_blocks(1, (int)sb.inode_table_len, (void *)inode_table) == 0)
     {
         D printf("Error writing blocks");
         return 0;
