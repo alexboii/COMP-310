@@ -22,7 +22,7 @@
 #define IS_ARRAY(arg) (IS_INDEXABLE(arg) && (((void *)&arg) == ((void *)arg)))
 #define ARRAYSIZE(arr) (IS_ARRAY(arr) ? (sizeof(arr) / sizeof(arr[0])) : 0)
 
-#define MAX_FILE_NAME 20
+#define MAX_FILE_NAME 21
 #define POINTER_SIZE 12
 
 // for debugging purposes
@@ -83,7 +83,7 @@ typedef struct directory_entry
 // inode constants
 #define INODES 100
 #define INODE_BLOCK_SIZE 10
-#define INODE_BLOCKS_NO INODES / INODE_BLOCK_SIZE
+#define INODE_BLOCKS_NO (sizeof(inode_t) * INODES / BLOCK_SIZE + 1)
 #define DIR_BLOCKS (sizeof(directory_entry) * INODES) / BLOCK_SIZE + 1
 #define DUMMY_INITIALIZER -1
 #define FS_SIZE_INITIAL NUM_BLOCKS *BLOCK_SIZE
@@ -111,6 +111,9 @@ int set_root_table_entry(int root_index, int empty, int inode_num, char *name);
 int find_empty_fd();
 int find_empty_inode();
 int find_empty_dir();
+int read_all_from_disk();
+int wrapper_write_blocks(int start_address, int nb_blocks, void *buffer);
+int save_inode_table();
 
 // error messages
 #define ERROR "ERROR: "
