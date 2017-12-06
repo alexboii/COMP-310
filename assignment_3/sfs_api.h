@@ -22,6 +22,7 @@
 #define IS_INDEXABLE(arg) (sizeof(arg[0]))
 #define IS_ARRAY(arg) (IS_INDEXABLE(arg) && (((void *)&arg) == ((void *)arg)))
 #define ARRAYSIZE(arr) (IS_ARRAY(arr) ? (sizeof(arr) / sizeof(arr[0])) : 0)
+#define LAMBDA(c_) ({ c_ _; })
 
 #define MAX_FILE_NAME 21
 #define POINTER_SIZE 12
@@ -115,6 +116,7 @@ int find_empty_dir();
 int read_all_from_disk();
 int wrapper_write_blocks(int start_address, int nb_blocks, void *buffer);
 int save_inode_table();
+int find_empty(int size, int (*is_empty)(int));
 
 // error messages
 #define ERROR "ERROR: "

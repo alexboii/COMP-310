@@ -24,9 +24,8 @@ int current_position = 0;
 
 void mksfs(int fresh)
 {
-    // TODO: Add debug statements
-    // TODO: Delete root in memory?
 
+    // reset the pointer of the directory table
     current_position = 0;
 
     if (fresh)
@@ -38,10 +37,11 @@ void mksfs(int fresh)
 
         // initialize superblock
         superblock_init();
+
+        // set the first block as occupied by the superblock
         force_set_index(0);
 
-        // initialize inode table
-        // TODO: Initialize this properly
+        // initialize inode table, directory table & fd table
         for (int i = 0; i < ARRAYSIZE(inode_table); i++)
         {
             inode_table[i].empty = 1;
@@ -58,18 +58,17 @@ void mksfs(int fresh)
             set_root_table_entry(i, 1, -1, "");
         }
 
+        // set the first entry of the fd as reserved by the root
         set_fd(0, 0, 0, &inode_table[0], 0);
         inode_table[0].empty = 0; // we set it to be used because we just assigned root to it
 
-        // initialize node table
+        // set the blocks occupied by the inode table
         for (int i = 1; i < ARRAYSIZE(inode_table); i++) // start from 1 because first block for sb
         {
             force_set_index(i);
         }
 
-        // initialize directory's pointers for root
-        // TODO: rever this to what it was
-        // initialize directory's pointers for root
+        // initialize data pointers for root
         for (int i = 0; i < DIR_BLOCKS; i++)
         {
             int inode_wrapper = i + INODE_BLOCKS_NO + 1;
@@ -85,7 +84,7 @@ void mksfs(int fresh)
         return;
     }
 
-    // initialize directory table and fd table
+    // initialize directory table and fd table, which resides in memory
     for (int i = 0; i < ARRAYSIZE(fd_table); i++)
     {
         set_fd(i, 1, -1, NULL, -1);
@@ -101,45 +100,6 @@ void mksfs(int fresh)
 
 int sfs_getnextfilename(char *fname)
 {
-    // D printf("Inside of sfs_getnextfilename");
-
-    // if (current_position <= ARRAYSIZE(root))
-    // {
-    //     current_position = 0;
-    //     return 0;
-    // }
-
-    // if (strlen(root[current_position].name) != 0 && strlen(root[current_position].name) != NULL)
-    // {
-    //     strncpy(fname, root[current_position].name, MAX_FILE_NAME);
-    //     current_position++;
-
-    //     return 1;
-    // }
-
-    // int i = current_position;
-    // int checker = 0;
-    // while (i <= ARRAYSIZE(root) && !checker)
-    // {
-    //     if (strlen(root[i].name) != 0 && strlen(root[i].name) != NULL)
-    //     {
-    //         checker = 1;
-    //     }
-    //     i++;
-    // }
-
-    // if (!checker)
-    // {
-    //     current_position = 0;
-    // }
-
-    // return checker;
-
-    // int i = 0;
-    // while (i <= ARRAYSIZE(root))
-    // {
-    // }
-
     int i = current_position;
     int checker = 0;
     while (i <= ARRAYSIZE(root) && !checker)
@@ -211,7 +171,9 @@ int sfs_fopen(char *name)
         }
 
         // find first non-used entry if the file isn't open
-        int empty_fd = find_empty_fd();
+        int empty_fd = find_empty(ARRAYSIZE(fd_table), LAMBDA(int _(int i) {
+                                      return fd_table[i].empty = 1;
+                                  }));
 
         if (empty_fd == -1)
         {
@@ -616,6 +578,19 @@ int read_all_from_disk()
 
 //     return -1;
 // }
+
+int find_empty(int size, int (*is_empty)(int))
+{
+    for (int i = 0; i < size; i++)
+    {
+        if (is_empty(i))
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
 
 int find_file_inode_table(char *name)
 {
