@@ -310,7 +310,7 @@ int sfs_fread(int fileID, char *buf, int length)
         memcpy(&file_buffer[block_pointer], &block_buffer[block_start_offset], block_end_offset);
 
         D printf("Did I even get in here 2? \n");
-        block_pointer = (i == first_block) ? block_pointer + last_block_index - fd->rwptr % sb.block_size : block_pointer + last_block_index;
+        block_pointer = block_pointer + last_block_index - block_start_offset;
         D printf("Line 425: What's buff pointer? %i\n", block_pointer);
 
         free(block_buffer);
