@@ -10,6 +10,7 @@
 #include <strings.h>
 #include "disk_emu.h"
 #include <assert.h>
+#include <execinfo.h>
 
 /* macros */
 #define FREE_BIT(_data, _which_bit) \
@@ -127,5 +128,6 @@ int save_inode_table();
 #define WRONG_LENGTH ERROR "Cannot have length less or equal to 0. \n"
 #define BUF_NULL ERROR "Buffer cannot be empty. \n"
 #define FILE_NOT_FOUND ERROR "File could not be found. \n"
+#define SEEK_ERROR ERROR "Cannot seek requested file. \n"
 
 #endif //_INCLUDE_SFS_API_H_

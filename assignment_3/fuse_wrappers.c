@@ -121,15 +121,25 @@ static int fuse_write(const char *path, const char *buf, size_t size,
 
     fd = sfs_fopen(filename);
     if (fd == -1)
+    {
+        printf("I'm here 1");
         return -errno;
+    }
 
     if (sfs_fseek(fd, offset) == -1)
+    {
+        printf("I'm here 2");
+
         return -errno;
+    }
 
     res = sfs_fwrite(fd, buf, size);
     if (res == -1)
-        return -errno;
+    {
+        printf("I'm here 3");
 
+        return -errno;
+    }
     sfs_fclose(fd);
     return res;
 }

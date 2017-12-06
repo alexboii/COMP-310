@@ -8,20 +8,20 @@
  * upper-case letters and periods ('.') characters. Feel free to
  * change this if your implementation differs.
  */
-#define MAX_FNAME_LENGTH 20 /* Assume at most 20 characters (16.3) */
+#define MAX_FNAME_LENGTH 20   /* Assume at most 20 characters (16.3) */
 
 /* The maximum number of files to attempt to open or create.  NOTE: we
  * do not _require_ that you support this many files. This is just to
  * test the behavior of your code.
  */
-#define MAX_FD 100
+#define MAX_FD 100 
 
 /* The maximum number of bytes we'll try to write to a file. If you
  * support much shorter or larger files for some reason, feel free to
  * reduce this value.
  */
 #define MAX_BYTES 30000 /* Maximum file size I'll try to create */
-#define MIN_BYTES 10000 /* Minimum file size */
+#define MIN_BYTES 10000         /* Minimum file size */
 
 /* Just a random test string.
  */
@@ -37,20 +37,17 @@ static char test_str[] = "The quick brown fox jumps over the lazy dog.\n";
  * The return value is a pointer to the new string, which may be
  * released by a call to free() when you are done using the string.
  */
-
-char *rand_name()
+ 
+char *rand_name() 
 {
   char fname[MAX_FNAME_LENGTH];
   int i;
 
-  for (i = 0; i < MAX_FNAME_LENGTH; i++)
-  {
-    if (i != 16)
-    {
+  for (i = 0; i < MAX_FNAME_LENGTH; i++) {
+    if (i != 16) {
       fname[i] = 'A' + (rand() % 26);
     }
-    else
-    {
+    else {
       fname[i] = '.';
     }
   }
@@ -60,7 +57,8 @@ char *rand_name()
 
 /* The main testing program
  */
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
   int i, j, k;
   int chunksize;
@@ -70,39 +68,33 @@ int main(int argc, char **argv)
   int fds[MAX_FD];
   char *names[MAX_FD];
   int filesize[MAX_FD];
-  int nopen;   /* Number of files simultaneously open */
-  int ncreate; /* Number of files created in directory */
+  int nopen;                    /* Number of files simultaneously open */
+  int ncreate;                  /* Number of files created in directory */
   int error_count = 0;
   int tmp;
 
-  mksfs(1); /* Initialize the file system. */
+  mksfs(1);                     /* Initialize the file system. */
 
   /* First we open two files and attempt to write data to them.
    */
-  for (i = 0; i < 2; i++)
-  {
+  for (i = 0; i < 2; i++) {
     names[i] = rand_name();
     fds[i] = sfs_fopen(names[i]);
-    if (fds[i] < 0)
-    {
+    if (fds[i] < 0) {
       fprintf(stderr, "ERROR: creating first test file %s\n", names[i]);
       error_count++;
     }
     tmp = sfs_fopen(names[i]);
-    if (tmp >= 0 && tmp != fds[i])
-    {
-      fprintf(stderr, "ERROR: file %s was opened twice from %i\n", names[i], i);
+    if (tmp >= 0 && tmp != fds[i]) {
+      fprintf(stderr, "ERROR: file %s was opened twice\n", names[i]);
       error_count++;
     }
-    filesize[i] = (rand() % (MAX_BYTES - MIN_BYTES)) + MIN_BYTES;
+    filesize[i] = (rand() % (MAX_BYTES-MIN_BYTES)) + MIN_BYTES;
   }
 
-  for (i = 0; i < 2; i++)
-  {
-    for (j = i + 1; j < 2; j++)
-    {
-      if (fds[i] == fds[j])
-      {
+  for (i = 0; i < 2; i++) {
+    for (j = i + 1; j < 2; j++) {
+      if (fds[i] == fds[j]) {
         fprintf(stderr, "Warning: the file descriptors probably shouldn't be the same?\n");
       }
     }
@@ -110,32 +102,25 @@ int main(int argc, char **argv)
 
   printf("Two files created with zero length:\n");
 
-  for (i = 0; i < 2; i++)
-  {
-    for (j = 0; j < filesize[i]; j += chunksize)
-    {
-      if ((filesize[i] - j) < 10)
-      {
+  for (i = 0; i < 2; i++) {
+    for (j = 0; j < filesize[i]; j += chunksize) {
+      if ((filesize[i] - j) < 10) {
         chunksize = filesize[i] - j;
       }
-      else
-      {
+      else {
         chunksize = (rand() % (filesize[i] - j)) + 1;
       }
 
-      if ((buffer = malloc(chunksize)) == NULL)
-      {
+      if ((buffer = malloc(chunksize)) == NULL) {
         fprintf(stderr, "ABORT: Out of memory!\n");
         exit(-1);
       }
-      for (k = 0; k < chunksize; k++)
-      {
-        buffer[k] = (char)(j + k);
+      for (k = 0; k < chunksize; k++) {
+        buffer[k] = (char) (j+k);
       }
       tmp = sfs_fwrite(fds[i], buffer, chunksize);
-      if (tmp != chunksize)
-      {
-        fprintf(stderr, "ERROR: Tried to write %d bytes, but wrote %d\n",
+      if (tmp != chunksize) {
+        fprintf(stderr, "ERROR: Tried to write %d bytes, but wrote %d\n", 
                 chunksize, tmp);
         error_count++;
       }
@@ -143,15 +128,13 @@ int main(int argc, char **argv)
     }
   }
 
-  if (sfs_fclose(fds[1]) != 0)
-  {
+  if (sfs_fclose(fds[1]) != 0) {
     fprintf(stderr, "ERROR: close of handle %d failed\n", fds[1]);
     error_count++;
   }
 
   /* Sneaky attempt to close already closed file handle. */
-  if (sfs_fclose(fds[1]) == 0)
-  {
+  if (sfs_fclose(fds[1]) == 0) {
     fprintf(stderr, "ERROR: close of stale handle %d succeeded\n", fds[1]);
     error_count++;
   }
@@ -159,49 +142,40 @@ int main(int argc, char **argv)
   printf("File %s now has length %d and %s now has length %d:\n",
          names[0], filesize[0], names[1], filesize[1]);
 
-  /* Just to be cruel - attempt to read from a closed file handle.
+  /* Just to be cruel - attempt to read from a closed file handle. 
    */
-  if (sfs_fread(fds[1], fixedbuf, sizeof(fixedbuf)) > 0)
-  {
+  if (sfs_fread(fds[1], fixedbuf, sizeof(fixedbuf)) > 0) {
     fprintf(stderr, "ERROR: read from a closed file handle?\n");
     error_count++;
   }
 
   fds[1] = sfs_fopen(names[1]);
-
+  
   sfs_fseek(fds[0], 0);
   sfs_fseek(fds[1], 0);
-
-  for (i = 0; i < 2; i++)
-  {
-    for (j = 0; j < filesize[i]; j += chunksize)
-    {
-      if ((filesize[i] - j) < 10)
-      {
+  
+  for (i = 0; i < 2; i++) {
+    for (j = 0; j < filesize[i]; j += chunksize) {
+      if ((filesize[i] - j) < 10) {
         chunksize = filesize[i] - j;
       }
-      else
-      {
+      else {
         chunksize = (rand() % (filesize[i] - j)) + 1;
       }
-      if ((buffer = malloc(chunksize)) == NULL)
-      {
+      if ((buffer = malloc(chunksize)) == NULL) {
         fprintf(stderr, "ABORT: Out of memory!\n");
         exit(-1);
       }
       readsize = sfs_fread(fds[i], buffer, chunksize);
 
-      if (readsize != chunksize)
-      {
+      if (readsize != chunksize) {
         fprintf(stderr, "ERROR: Requested %d bytes, read %d\n", chunksize, readsize);
         readsize = chunksize;
       }
-      for (k = 0; k < readsize; k++)
-      {
-        if (buffer[k] != (char)(j + k))
-        {
+      for (k = 0; k < readsize; k++) {
+        if (buffer[k] != (char)(j+k)) {
           fprintf(stderr, "ERROR: data error at offset %d in file %s (%d,%d)\n",
-                  j + k, names[i], buffer[k], (char)(j + k));
+                  j+k, names[i], buffer[k], (char)(j+k));
           error_count++;
           break;
         }
@@ -210,10 +184,8 @@ int main(int argc, char **argv)
     }
   }
 
-  for (i = 0; i < 2; i++)
-  {
-    if (sfs_fclose(fds[i]) != 0)
-    {
+  for (i = 0; i < 2; i++) {
+    if (sfs_fclose(fds[i]) != 0) {
       fprintf(stderr, "ERROR: closing file %s\n", names[i]);
       error_count++;
     }
@@ -223,10 +195,8 @@ int main(int argc, char **argv)
    * care about the return codes, really, but just want to make sure
    * this doesn't cause a problem.
    */
-  for (i = 0; i < 2; i++)
-  {
-    if (sfs_fclose(fds[i]) == 0)
-    {
+  for (i = 0; i < 2; i++) {
+    if (sfs_fclose(fds[i]) == 0) {
       fprintf(stderr, "Warning: closing already closed file %s\n", names[i]);
     }
   }
@@ -234,12 +204,10 @@ int main(int argc, char **argv)
   /* Now just try to open up a bunch of files.
    */
   ncreate = 0;
-  for (i = 0; i < MAX_FD; i++)
-  {
+  for (i = 0; i < MAX_FD; i++) {
     names[i] = rand_name();
     fds[i] = sfs_fopen(names[i]);
-    if (fds[i] < 0)
-    {
+    if (fds[i] < 0) {
       break;
     }
     sfs_fclose(fds[i]);
@@ -249,64 +217,52 @@ int main(int argc, char **argv)
   printf("Created %d files in the root directory\n", ncreate);
 
   nopen = 0;
-  for (i = 0; i < ncreate; i++)
-  {
+  for (i = 0; i < ncreate; i++) {
     fds[i] = sfs_fopen(names[i]);
-    if (fds[i] < 0)
-    {
+    if (fds[i] < 0) {
       break;
     }
     nopen++;
   }
   printf("Simultaneously opened %d files\n", nopen);
 
-  for (i = 0; i < nopen; i++)
-  {
+  for (i = 0; i < nopen; i++) {
     tmp = sfs_fwrite(fds[i], test_str, strlen(test_str));
-    if (tmp != strlen(test_str))
-    {
-      fprintf(stderr, "ERROR: Tried to write %d, returned %d\n",
+    if (tmp != strlen(test_str)) {
+      fprintf(stderr, "ERROR: Tried to write %d, returned %d\n", 
               (int)strlen(test_str), tmp);
       error_count++;
     }
-    if (sfs_fclose(fds[i]) != 0)
-    {
+    if (sfs_fclose(fds[i]) != 0) {
       fprintf(stderr, "ERROR: close of handle %d failed\n", fds[i]);
       error_count++;
     }
   }
 
   /* Re-open in reverse order */
-  for (i = nopen - 1; i >= 0; i--)
-  {
+  for (i = nopen-1; i >= 0; i--) {
     fds[i] = sfs_fopen(names[i]);
-    if (fds[i] < 0)
-    {
+    if (fds[i] < 0) {
       fprintf(stderr, "ERROR: can't re-open file %s\n", names[i]);
     }
   }
 
   /* Now test the file contents.
    */
-  for (i = 0; i < nopen; i++)
-  {
-    sfs_fseek(fds[i], 0);
+  for (i = 0; i < nopen; i++) {
+      sfs_fseek(fds[i], 0);
   }
 
-  for (j = 0; j < strlen(test_str); j++)
-  {
-    for (i = 0; i < nopen; i++)
-    {
+  for (j = 0; j < strlen(test_str); j++) {
+    for (i = 0; i < nopen; i++) {
       char ch;
 
-      if (sfs_fread(fds[i], &ch, 1) != 1)
-      {
+      if (sfs_fread(fds[i], &ch, 1) != 1) {
         fprintf(stderr, "ERROR: Failed to read 1 character\n");
         error_count++;
       }
-      if (ch != test_str[j])
-      {
-        fprintf(stderr, "ERROR: Read wrong byte from %s at %d (%d,%d)\n",
+      if (ch != test_str[j]) {
+        fprintf(stderr, "ERROR: Read wrong byte from %s at %d (%d,%d)\n", 
                 names[i], j, ch, test_str[j]);
         error_count++;
         break;
@@ -316,39 +272,30 @@ int main(int argc, char **argv)
 
   /* Now close all of the open file handles.
    */
-  for (i = 0; i < nopen; i++)
-  {
-    if (sfs_fclose(fds[i]) != 0)
-    {
+  for (i = 0; i < nopen; i++) {
+    if (sfs_fclose(fds[i]) != 0) {
       fprintf(stderr, "ERROR: close of handle %d failed\n", fds[i]);
       error_count++;
     }
   }
 
-  printf("Error count until here: %i\n", error_count);
-  printf("Is error here?\n\n\n\n");
   /* Now we try to re-initialize the system.
    */
   mksfs(0);
 
-  for (i = 0; i < nopen; i++)
-  {
+  for (i = 0; i < nopen; i++) {
     fds[i] = sfs_fopen(names[i]);
     sfs_fseek(fds[i], 0);
-    if (fds[i] >= 0)
-    {
+    if (fds[i] >= 0) {
       readsize = sfs_fread(fds[i], fixedbuf, sizeof(fixedbuf));
-      if (readsize != strlen(test_str))
-      {
+      if (readsize != strlen(test_str)) {
         fprintf(stderr, "ERROR: Read wrong number of bytes\n");
         error_count++;
       }
 
-      for (j = 0; j < strlen(test_str); j++)
-      {
-        if (test_str[j] != fixedbuf[j])
-        {
-          fprintf(stderr, "ERROR: Wrong byte in %s at %d (%d,%d)\n",
+      for (j = 0; j < strlen(test_str); j++) {
+        if (test_str[j] != fixedbuf[j]) {
+          fprintf(stderr, "ERROR: Wrong byte in %s at %d (%d,%d)\n", 
                   names[i], j, fixedbuf[j], test_str[j]);
           printf("%d\n", fixedbuf[1]);
           error_count++;
@@ -356,8 +303,7 @@ int main(int argc, char **argv)
         }
       }
 
-      if (sfs_fclose(fds[i]) != 0)
-      {
+      if (sfs_fclose(fds[i]) != 0) {
         fprintf(stderr, "ERROR: close of handle %d failed\n", fds[i]);
         error_count++;
       }
@@ -371,21 +317,17 @@ int main(int argc, char **argv)
    * This is just to try to fill up the disk, to see what happens.
    */
   fds[0] = sfs_fopen(names[0]);
-  if (fds[0] >= 0)
-  {
-    for (i = 0; i < 100000; i++)
-    {
+  if (fds[0] >= 0) {
+    for (i = 0; i < 100000; i++) {
       int x;
 
-      if ((i % 100) == 0)
-      {
+      if ((i % 100) == 0) {
         fprintf(stderr, "%d\r", i);
       }
 
       memset(fixedbuf, (char)i, sizeof(fixedbuf));
       x = sfs_fwrite(fds[0], fixedbuf, sizeof(fixedbuf));
-      if (x != sizeof(fixedbuf))
-      {
+      if (x != sizeof(fixedbuf)) {
         /* Sooner or later, this write should fail. The only thing is that
          * it should fail gracefully, without any catastrophic errors.
          */
@@ -397,40 +339,33 @@ int main(int argc, char **argv)
     }
     sfs_fclose(fds[0]);
   }
-  else
-  {
+  else {
     fprintf(stderr, "ERROR: re-opening file %s\n", names[0]);
   }
 
   /* Now, having filled up the disk, try one more time to read the
    * contents of the files we created.
    */
-  for (i = 0; i < nopen; i++)
-  {
+  for (i = 0; i < nopen; i++) {
     fds[i] = sfs_fopen(names[i]);
     sfs_fseek(fds[i], 0);
-    if (fds[i] >= 0)
-    {
+    if (fds[i] >= 0) {
       readsize = sfs_fread(fds[i], fixedbuf, sizeof(fixedbuf));
-      if (readsize < strlen(test_str))
-      {
+      if (readsize < strlen(test_str)) {
         fprintf(stderr, "ERROR: Read wrong number of bytes\n");
         error_count++;
       }
 
-      for (j = 0; j < strlen(test_str); j++)
-      {
-        if (test_str[j] != fixedbuf[j])
-        {
-          fprintf(stderr, "ERROR: Wrong byte in %s at position %d (%d,%d)\n",
+      for (j = 0; j < strlen(test_str); j++) {
+        if (test_str[j] != fixedbuf[j]) {
+          fprintf(stderr, "ERROR: Wrong byte in %s at position %d (%d,%d)\n", 
                   names[i], j, fixedbuf[j], test_str[j]);
           error_count++;
           break;
         }
       }
 
-      if (sfs_fclose(fds[i]) != 0)
-      {
+      if (sfs_fclose(fds[i]) != 0) {
         fprintf(stderr, "ERROR: close of handle %d failed\n", fds[i]);
         error_count++;
       }
@@ -440,3 +375,4 @@ int main(int argc, char **argv)
   fprintf(stderr, "Test program exiting with %d errors\n", error_count);
   return (error_count);
 }
+

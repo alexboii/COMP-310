@@ -27,6 +27,8 @@ void mksfs(int fresh)
     // TODO: Add debug statements
     // TODO: Delete root in memory?
 
+    current_position = 0;
+
     if (fresh)
     {
         D printf("New file system  \n");
@@ -51,13 +53,9 @@ void mksfs(int fresh)
                 inode_table[i].data_ptrs[j] = -1;
             }
 
-            root[i].empty = 1;
-        }
-
-        // initialize fd table
-        for (int i = 0; i < ARRAYSIZE(fd_table); i++)
-        {
+            // initialize directory table and fd table
             set_fd(i, 1, -1, NULL, -1);
+            set_root_table_entry(i, 1, -1, "");
         }
 
         set_fd(0, 0, 0, &inode_table[0], 0);
@@ -87,34 +85,90 @@ void mksfs(int fresh)
         return;
     }
 
-    // initialize fd table
+    // initialize directory table and fd table
     for (int i = 0; i < ARRAYSIZE(fd_table); i++)
     {
         set_fd(i, 1, -1, NULL, -1);
+        set_root_table_entry(i, 1, -1, "");
     }
 
     D printf("Open existing file system \n");
 
     read_all_from_disk();
+
     return;
 }
 
 int sfs_getnextfilename(char *fname)
 {
-    D printf("Inside of sfs_getnextfilename");
+    // D printf("Inside of sfs_getnextfilename");
 
-    // TODO: Make this cleaner, better
+    // if (current_position <= ARRAYSIZE(root))
+    // {
+    //     current_position = 0;
+    //     return 0;
+    // }
 
-    if (root[current_position].empty == 1 || current_position >= INODES || strlen(root[current_position].name) == 0)
+    // if (strlen(root[current_position].name) != 0 && strlen(root[current_position].name) != NULL)
+    // {
+    //     strncpy(fname, root[current_position].name, MAX_FILE_NAME);
+    //     current_position++;
+
+    //     return 1;
+    // }
+
+    // int i = current_position;
+    // int checker = 0;
+    // while (i <= ARRAYSIZE(root) && !checker)
+    // {
+    //     if (strlen(root[i].name) != 0 && strlen(root[i].name) != NULL)
+    //     {
+    //         checker = 1;
+    //     }
+    //     i++;
+    // }
+
+    // if (!checker)
+    // {
+    //     current_position = 0;
+    // }
+
+    // return checker;
+
+    // int i = 0;
+    // while (i <= ARRAYSIZE(root))
+    // {
+    // }
+
+    int i = current_position;
+    int checker = 0;
+    while (i <= ARRAYSIZE(root) && !checker)
     {
-        printf(CANNOT_FIND_FILE);
+        if (strlen(root[i].name) != 0 && strlen(root[i].name) != NULL)
+        {
+            checker = 1;
+        }
+        i++;
+    }
+
+    if (current_position >= ARRAYSIZE(root) || (strlen(root[current_position].name) == 0 && !checker))
+    {
+        current_position = 0;
         return 0;
     }
 
-    D printf("Root's name: %s\n", root[current_position].name);
-    strncpy(fname, root[current_position].name, MAX_FILE_NAME);
-    D printf("fname name:  %s\n", fname);
+    while (root[current_position].empty == 1)
+    {
+        current_position++;
 
+        if (current_position >= ARRAYSIZE(root))
+        {
+            current_position = 0;
+            return 0;
+        }
+    }
+
+    strncpy(fname, root[current_position].name, MAX_FILE_NAME);
     current_position++;
 
     return 1;
@@ -208,7 +262,7 @@ int sfs_fopen(char *name)
 
 int sfs_fclose(int fileID)
 {
-    D printf("I'm in sfs_fclose \n");
+    D printf("I'm in sfs_fclose  \n");
 
     if (fileID > INODES || fileID < 0 || fd_table[fileID].empty == 1)
     {
@@ -244,6 +298,8 @@ int sfs_fread(int fileID, char *buf, int length)
     file_descriptor *fd = &fd_table[fileID];
     inode_t *inode = &inode_table[fd->inodeIndex];
 
+    // wrap it around in case of buffer overflow
+    // i.e. read something smaller than size of inode, or the whole file
     int wrapped_length = (fd->rwptr + length > inode->size) ? inode->size - fd->rwptr : length;
 
     // starting block
@@ -257,7 +313,7 @@ int sfs_fread(int fileID, char *buf, int length)
     D printf("Wrapped length: %i\n", wrapped_length);
     char *file_buffer = malloc(wrapped_length); // hold the whole file
 
-    int buffer_pointer = 0;
+    int block_pointer = 0;
 
     for (int i = first_block; i <= blocks_to_read; i++)
     {
@@ -289,27 +345,22 @@ int sfs_fread(int fileID, char *buf, int length)
         int last_block_index = (i == blocks_to_read) ? (fd->rwptr + wrapped_length) % sb.block_size : sb.block_size;
         int block_start_offset = (i == first_block) ? fd->rwptr % sb.block_size : 0;
         int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : last_block_index;
-        memcpy(&file_buffer[buffer_pointer], &block_buffer[block_start_offset], block_end_offset);
+        memcpy(&file_buffer[block_pointer], &block_buffer[block_start_offset], block_end_offset);
 
         D printf("Did I even get in here 2? \n");
-        buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index - fd->rwptr % sb.block_size : buffer_pointer + last_block_index;
-        D printf("Line 425: What's buff pointer? %i\n", buffer_pointer);
+        block_pointer = (i == first_block) ? block_pointer + last_block_index - fd->rwptr % sb.block_size : block_pointer + last_block_index;
+        D printf("Line 425: What's buff pointer? %i\n", block_pointer);
 
         free(block_buffer);
     }
-
-    // memcpy(buf, file_buffer, wrapped_length);
 
     memcpy(buf, file_buffer, wrapped_length);
     free(file_buffer);
 
     fd_table[fileID].rwptr = fd_table[fileID].rwptr + wrapped_length;
-    // free(block_buffer);
-    // free(file_buffer);
-    // free(ind_pointers);
 
-    D printf("Buffer pointer before exiting?: %i\n", buffer_pointer);
-    return buffer_pointer;
+    D printf("Buffer pointer before exiting?: %i\n", block_pointer);
+    return block_pointer;
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length)
@@ -334,7 +385,7 @@ int sfs_fwrite(int fileID, const char *buf, int length)
 
     int first_block = fd->rwptr / sb.block_size;
     int blocks_to_read = ((fd->rwptr) + length) / sb.block_size; // MAYBE DO +1?
-    int buffer_pointer = 0;
+    int block_pointer = 0;
 
     for (int i = first_block; i <= blocks_to_read; i++)
     {
@@ -437,16 +488,16 @@ int sfs_fwrite(int fileID, const char *buf, int length)
         int last_block_index = (i == blocks_to_read) ? (fd->rwptr + length) % sb.block_size : sb.block_size;
         int block_start_offset = (i == first_block) ? fd->rwptr % sb.block_size : 0;
         int block_end_offset = (i == first_block) ? last_block_index - fd->rwptr % sb.block_size : last_block_index;
-        memcpy(&buffer[block_start_offset], &buf[buffer_pointer], block_end_offset);
+        memcpy(&buffer[block_start_offset], &buf[block_pointer], block_end_offset);
         write_blocks(current_block, 1, buffer);
 
-        buffer_pointer = (i == first_block) ? buffer_pointer + last_block_index - fd->rwptr % sb.block_size : buffer_pointer + last_block_index;
-        D printf("Line 425: What's buff pointer? \n", buffer_pointer);
+        block_pointer = (i == first_block) ? block_pointer + last_block_index - fd->rwptr % sb.block_size : block_pointer + last_block_index;
+        D printf("Line 425: What's buff pointer? \n", block_pointer);
 
         free(buffer);
     }
 
-    inode->size = fd->rwptr + length;
+    inode->size = (inode->size < fd->rwptr + length) ? fd->rwptr + length : inode->size;
 
     // place pointer to its new position if everything successful
     fd->rwptr = fd->rwptr + length;
@@ -454,17 +505,26 @@ int sfs_fwrite(int fileID, const char *buf, int length)
     // persist changes in the inode table
     save_inode_table();
 
-    D printf("Line 442: What's buff pointer? \n", buffer_pointer);
-    return buffer_pointer;
+    D printf("Line 442: What's buff pointer? \n", block_pointer);
+    return block_pointer;
 }
 
 int sfs_fseek(int fileID, int loc)
 {
-    D printf("I'm in sfs_fseek\n");
 
-    // TODO: Do error checking here
+    if (fd_table[fileID].empty == 1 || fd_table[fileID].inode == NULL || fd_table[fileID].inode == -1)
+    {
+        printf(SEEK_ERROR);
+        return -1;
+    }
 
-    fd_table[fileID].rwptr = loc;
+    D printf("Size inode? %i, RW pointer? %i\n", fd_table[fileID].inode->size, fd_table[fileID].rwptr);
+
+    // if the loc is outisde of the boundaries of our file, place the pointer to the end of the file
+    // I don't know if this is a the best approach, but when I spoke to Amro he said that this is how
+    // I should do it
+    fd_table[fileID].rwptr = ((loc + fd_table[fileID].rwptr) > fd_table[fileID].inode->size) ? fd_table[fileID].inode->size : loc;
+
     return 0;
 }
 
@@ -480,7 +540,6 @@ int sfs_remove(char *file)
     {
         if (root[i].empty == 0 && strcmp(root[i].name, file) == 0)
         {
-            set_root_table_entry(i, 1, -1, "\0");
 
             inode = root[i].num;
             break;
@@ -492,6 +551,8 @@ int sfs_remove(char *file)
         printf(FILE_NOT_FOUND);
         return -1;
     }
+
+    set_root_table_entry(i, 1, -1, "\0");
 
     for (int j = 0; j < POINTER_SIZE; j++)
     {
@@ -508,8 +569,8 @@ int sfs_remove(char *file)
         inode_table[inode].indirectPointer = -1;
     }
 
-    save_inode_table();
-    write_blocks(1 + sb.inode_table_len, DIR_BLOCKS, root);
+    // current_position = 0;
+    store_in_disk();
 
     return 0;
 }
@@ -522,7 +583,7 @@ int store_in_disk()
 {
     save_inode_table();
 
-    if (write_blocks((int)0, (int)1, &sb) == 0 || write_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || write_blocks(1, (int)sb.inode_table_len, (void *)inode_table) == 0)
+    if (write_blocks((int)0, (int)1, &sb) == 0 || write_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || write_blocks((int)sb.inode_table_len + 1, DIR_BLOCKS, root) == 0)
     {
         D printf("Error writing blocks");
         return 0;
@@ -535,7 +596,7 @@ int read_all_from_disk()
 {
     if (read_blocks(0, 1, (void *)&sb) == 0 || read_blocks(NUM_BLOCKS - 1, 1, free_bit_map) == 0 || read_blocks(1, (int)sb.inode_table_len, (void *)inode_table) == 0)
     {
-        printf("Error reading blocks");
+        D printf("Error reading blocks");
         return 0;
     }
 
@@ -604,7 +665,7 @@ int set_fd(int fd_index, int empty, uint64_t inodeIndex, inode_t *inode, uint64_
 int set_root_table_entry(int root_index, int empty, int inode_num, char name[MAX_FILE_NAME])
 {
     root[root_index] = (directory_entry){.num = inode_num, .empty = empty};
-    strncpy(root[root_index].name, name, MAX_FILE_NAME);
+    strcpy(root[root_index].name, name);
     // TODO: Maybe null terminate the string?
 
     write_blocks((int)1 + sb.inode_table_len, DIR_BLOCKS, root);
